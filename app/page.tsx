@@ -13,27 +13,27 @@ import { ArrowRight, CheckCircle2, BarChart3, Mail, Upload, Users, Zap } from 'l
 export default function Home() {
   const router = useRouter();
 
-  useEffect(() => {
-    // Check for existing session and redirect to dashboard if found
-    const checkSession = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (session) {
-        router.push('/dashboard');
-      }
-    };
+  // useEffect(() => {
+  //   // Check for existing session and redirect to dashboard if found
+  //   const checkSession = async () => {
+  //     const {
+  //       data: { session },
+  //     } = await supabase.auth.getSession();
+  //     if (session) {
+  //       router.push('/dashboard');
+  //     }
+  //   };
 
-    checkSession();
-  }, [router]);
+  //   checkSession();
+  // }, [router]);
 
   return (
     <div className="flex min-h-screen flex-col">
       <SiteHeader />
       <main className="flex-1">
         {/* Hero Section */}
-        <section className="relative overflow-hidden py-20 md:py-32 bg-background">
-          <div className="container px-4 md:px-6">
+        <section className="relative overflow-hidden py-20 md:py-32 bg-background flex justify-center">
+          <div className="container px-6 w-full max-w-7xl">
             <div className="grid gap-6 lg:grid-cols-2 lg:gap-12 items-center">
               <div className="space-y-4">
                 <div className="inline-block rounded-lg bg-primary/10 px-3 py-1 text-sm text-primary">
@@ -48,7 +48,7 @@ export default function Home() {
                 </p>
                 <div className="flex flex-col sm:flex-row gap-3">
                   <Link href="/auth/signup">
-                    <Button size="lg" className="gap-1.5">
+                    <Button size="lg" className="animated-button gap-1.5">
                       Get Started <ArrowRight className="h-4 w-4" />
                     </Button>
                   </Link>
@@ -80,8 +80,8 @@ export default function Home() {
         </section>
 
         {/* Features Section */}
-        <section className="py-20 bg-muted/50">
-          <div className="container px-4 md:px-6">
+        <section className="py-20 bg-muted/50 flex justify-center">
+          <div className="container px-6 w-full max-w-7xl">
             <div className="text-center mb-12">
               <h2 className="text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl">
                 Powerful Features
@@ -150,8 +150,8 @@ export default function Home() {
         </section>
 
         {/* CTA Section */}
-        <section className="py-20 bg-primary text-primary-foreground">
-          <div className="container px-4 md:px-6">
+        <section className="py-20 bg-primary text-primary-foreground flex justify-center">
+          <div className="container px-6 w-full max-w-7xl">
             <div className="flex flex-col items-center justify-center space-y-4 text-center">
               <h2 className="text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl">
                 Ready to Transform Your Onboarding Process?
@@ -161,7 +161,7 @@ export default function Home() {
               </p>
               <div className="flex flex-col sm:flex-row gap-3">
                 <Link href="/auth/signup">
-                  <Button size="lg" variant="secondary" className="gap-1.5">
+                  <Button size="lg" className="animated-button gap-1.5">
                     Get Started <ArrowRight className="h-4 w-4" />
                   </Button>
                 </Link>

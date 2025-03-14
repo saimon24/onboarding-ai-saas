@@ -5,8 +5,8 @@ import { Logo } from '@/components/logo';
 export function SiteFooter() {
   return (
     <footer className="border-t bg-background">
-      <div className="container py-12 md:py-16">
-        <div className="grid grid-cols-1 gap-8 md:grid-cols-4">
+      <div className="container py-16 px-6 md:py-20">
+        <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
           <div className="space-y-4">
             <Link href="/" className="flex items-center space-x-2">
               <Logo className="h-6 w-6" />
@@ -29,31 +29,6 @@ export function SiteFooter() {
                   Pricing
                 </Link>
               </li>
-              <li>
-                <Link href="/docs" className="text-muted-foreground hover:text-foreground">
-                  Documentation
-                </Link>
-              </li>
-            </ul>
-          </div>
-          <div className="space-y-4">
-            <h4 className="text-sm font-semibold">Company</h4>
-            <ul className="space-y-2 text-sm">
-              <li>
-                <Link href="/about" className="text-muted-foreground hover:text-foreground">
-                  About
-                </Link>
-              </li>
-              <li>
-                <Link href="/blog" className="text-muted-foreground hover:text-foreground">
-                  Blog
-                </Link>
-              </li>
-              <li>
-                <Link href="/careers" className="text-muted-foreground hover:text-foreground">
-                  Careers
-                </Link>
-              </li>
             </ul>
           </div>
           <div className="space-y-4">
@@ -69,11 +44,7 @@ export function SiteFooter() {
                   Terms
                 </Link>
               </li>
-              <li>
-                <Link href="/cookies" className="text-muted-foreground hover:text-foreground">
-                  Cookies
-                </Link>
-              </li>
+       
             </ul>
           </div>
         </div>

@@ -126,4 +126,41 @@
   .feature-icon-container {
     @apply p-3 rounded-full bg-primary/10 text-primary mb-4 inline-flex;
   }
+
+  .animated-button {
+    @apply relative overflow-hidden rounded-md text-white font-medium transition-all duration-300;
+    background: linear-gradient(45deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.8) 100%);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    animation: pulse 2s infinite alternate;
+  }
+
+  .animated-button::before {
+    content: '';
+    @apply absolute inset-0 rounded-md;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transform: translateX(-100%);
+    animation: shimmer 3s infinite;
+  }
+
+  .animated-button:hover {
+    transform: translateY(-2px) scale(1.03);
+    box-shadow: 0 7px 20px rgba(0, 0, 0, 0.2);
+    background: linear-gradient(45deg, hsl(var(--primary) / 0.9) 0%, hsl(var(--primary)) 100%);
+    animation: none;
+  }
+
+  @keyframes shimmer {
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
+  @keyframes pulse {
+    0% {
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    }
+    100% {
+      box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+    }
+  }
 }

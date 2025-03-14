@@ -19,6 +19,7 @@ import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 import Papa from 'papaparse';
 import { CSVMappingModal } from '@/components/csv-mapping-modal';
+import { SubscriptionManagement } from '@/components/subscription-management';
 
 // Define types for customer data
 interface CustomerData {
@@ -38,6 +39,11 @@ export default function Dashboard() {
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
   const [showMappingModal, setShowMappingModal] = useState(false);
+  const [subscriptionData, setSubscriptionData] = useState({
+    status: '',
+    plan: '',
+    periodEnd: '',
+  });
   const router = useRouter();
   const { toast } = useToast();
 
@@ -81,6 +87,28 @@ export default function Dashboard() {
         } catch (createError) {
           console.error('Error creating profile:', createError);
         }
+      } else if (profile) {
+        // Set subscription data if available
+        setSubscriptionData({
+          status: profile.subscription_status || '',
+          plan: profile.subscription_plan_name || '',
+          periodEnd: profile.subscription_current_period_end || '',
+        });
+      }
+
+      // Check for checkout success query parameter
+      const urlParams = new URLSearchParams(window.location.search);
+      const checkoutStatus = urlParams.get('checkout');
+
+      if (checkoutStatus === 'success') {
+        toast({
+          title: 'Success!',
+          description: 'Your subscription has been processed successfully.',
+        });
+
+        // Remove the query parameter from the URL
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
       }
 
       fetchCustomers();
@@ -252,11 +280,24 @@ export default function Dashboard() {
             <p className="text-muted-foreground">Manage your customer onboarding data</p>
           </div>
           <div className="flex gap-2">
+            <Button
+              onClick={() => router.push('/dashboard/webhooks')}
+              variant="outline"
+              className="gap-2">
+              <Upload className="h-4 w-4" />
+              Webhooks
+            </Button>
             <Button onClick={() => router.push('/settings')} variant="outline" className="gap-2">
               <Settings2 className="h-4 w-4" />
               Email Settings
             </Button>
-            <Button onClick={() => supabase.auth.signOut()} variant="outline" className="gap-2">
+            <Button
+              onClick={async () => {
+                await supabase.auth.signOut();
+                router.push('/');
+              }}
+              variant="outline"
+              className="gap-2">
               <LogOut className="h-4 w-4" />
               Sign Out
             </Button>
@@ -376,7 +417,7 @@ export default function Dashboard() {
                           size="sm"
                           onClick={() => router.push(`/customer/${customer.id}`)}
                           className="gap-1">
-                          View
+                          View Details
                           <ChevronRight className="h-4 w-4" />
                         </Button>
                       </div>
@@ -394,6 +435,14 @@ export default function Dashboard() {
           csvHeaders={csvHeaders}
           onStartImport={handleStartImport}
         />
+
+        <div className="mt-8">
+          <SubscriptionManagement
+            subscriptionStatus={subscriptionData.status}
+            subscriptionPlan={subscriptionData.plan}
+            subscriptionPeriodEnd={subscriptionData.periodEnd}
+          />
+        </div>
       </div>
     </div>
   );
