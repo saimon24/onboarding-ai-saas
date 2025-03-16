@@ -36,13 +36,6 @@ export function SiteHeader() {
                 </Link>
               </NavigationMenuItem>
               <NavigationMenuItem>
-                <Link href="/features/webhooks" legacyBehavior passHref>
-                  <NavigationMenuLink className={navigationMenuTriggerStyle()}>
-                    Webhooks
-                  </NavigationMenuLink>
-                </Link>
-              </NavigationMenuItem>
-              <NavigationMenuItem>
                 <Link href="/pricing" legacyBehavior passHref>
                   <NavigationMenuLink className={navigationMenuTriggerStyle()}>
                     Pricing

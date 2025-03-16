@@ -3,23 +3,14 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Upload,
-  FileSpreadsheet,
-  Mail,
-  Loader2,
-  Settings2,
-  LogOut,
-  ChevronRight,
-  Users,
-} from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Upload, FileSpreadsheet, Mail, Loader2, ExternalLink, Webhook } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 import Papa from 'papaparse';
 import { CSVMappingModal } from '@/components/csv-mapping-modal';
-import { SubscriptionManagement } from '@/components/subscription-management';
+import { DashboardNav } from '@/components/dashboard-nav';
 
 // Define types for customer data
 interface CustomerData {
@@ -39,11 +30,6 @@ export default function Dashboard() {
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
   const [showMappingModal, setShowMappingModal] = useState(false);
-  const [subscriptionData, setSubscriptionData] = useState({
-    status: '',
-    plan: '',
-    periodEnd: '',
-  });
   const router = useRouter();
   const { toast } = useToast();
 
@@ -87,13 +73,6 @@ export default function Dashboard() {
         } catch (createError) {
           console.error('Error creating profile:', createError);
         }
-      } else if (profile) {
-        // Set subscription data if available
-        setSubscriptionData({
-          status: profile.subscription_status || '',
-          plan: profile.subscription_plan_name || '',
-          periodEnd: profile.subscription_current_period_end || '',
-        });
       }
 
       // Check for checkout success query parameter
@@ -111,7 +90,7 @@ export default function Dashboard() {
         window.history.replaceState({}, document.title, newUrl);
       }
 
-      fetchCustomers();
+      fetchRecentCustomers();
     } catch (error: any) {
       console.error('Session/profile check error:', error);
       toast({
@@ -123,7 +102,7 @@ export default function Dashboard() {
     }
   };
 
-  const fetchCustomers = async () => {
+  const fetchRecentCustomers = async () => {
     try {
       const {
         data: { session },
@@ -133,7 +112,8 @@ export default function Dashboard() {
       const { data, error } = await supabase
         .from('customer_data')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(5);
 
       if (error) throw error;
       setCustomers(data || []);
@@ -245,7 +225,7 @@ export default function Dashboard() {
           }
 
           setShowMappingModal(false);
-          fetchCustomers();
+          fetchRecentCustomers();
         },
         error: (error) => {
           throw new Error(error.message);
@@ -272,70 +252,80 @@ export default function Dashboard() {
   });
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto py-8 px-4">
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-3xl font-bold">Dashboard</h1>
-            <p className="text-muted-foreground">Manage your customer onboarding data</p>
+    <div className="flex min-h-screen bg-background">
+      <div className="hidden md:flex flex-col w-64 border-r p-6">
+        <DashboardNav />
+      </div>
+      <div className="flex-1">
+        <div className="container mx-auto py-8 px-4">
+          <div className="flex justify-between items-center mb-8">
+            <div>
+              <h1 className="text-3xl font-bold">Dashboard</h1>
+              <p className="text-muted-foreground">Manage your customer onboarding data</p>
+            </div>
           </div>
-          <div className="flex gap-2">
-            <Button
-              onClick={() => router.push('/dashboard/webhooks')}
-              variant="outline"
-              className="gap-2">
-              <Upload className="h-4 w-4" />
-              Webhooks
-            </Button>
-            <Button onClick={() => router.push('/settings')} variant="outline" className="gap-2">
-              <Settings2 className="h-4 w-4" />
-              Email Settings
-            </Button>
-            <Button
-              onClick={async () => {
-                await supabase.auth.signOut();
-                router.push('/');
-              }}
-              variant="outline"
-              className="gap-2">
-              <LogOut className="h-4 w-4" />
-              Sign Out
-            </Button>
-          </div>
-        </div>
 
-        <div className="grid md:grid-cols-2 gap-6 mb-8">
-          <Card className="card-hover">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Upload className="w-5 h-5 text-primary" />
-                Upload Customer Data
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div
-                {...getRootProps()}
-                className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors
-                  ${
-                    isDragActive
-                      ? 'border-primary bg-primary/5'
-                      : 'border-border hover:border-primary hover:bg-primary/5'
-                  }`}>
-                <input {...getInputProps()} />
-                {uploading ? (
-                  <div className="flex items-center justify-center gap-2">
-                    <Loader2 className="w-5 h-5 animate-spin text-primary" />
-                    <p>Uploading...</p>
-                  </div>
-                ) : (
-                  <div>
-                    <FileSpreadsheet className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                    <p>Drag & drop a CSV file here, or click to select one</p>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+          <div className="grid md:grid-cols-2 gap-6 mb-8">
+            <Card className="card-hover">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Upload className="w-5 h-5 text-primary" />
+                  Upload Customer Data
+                </CardTitle>
+                <CardDescription>
+                  Import your customer data from a CSV file to generate personalized onboarding
+                  emails
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div
+                  {...getRootProps()}
+                  className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors
+                    ${
+                      isDragActive
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:border-primary hover:bg-primary/5'
+                    }`}>
+                  <input {...getInputProps()} />
+                  {uploading ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                      <p>Uploading...</p>
+                    </div>
+                  ) : (
+                    <div>
+                      <FileSpreadsheet className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                      <p>Drag & drop a CSV file here, or click to select one</p>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="card-hover">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Webhook className="w-5 h-5 text-primary" />
+                  Set Up Webhooks
+                </CardTitle>
+                <CardDescription>
+                  Connect your existing systems to automatically import customer data
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col items-center justify-center h-[180px] text-center">
+                  <Mail className="w-12 h-12 mb-4 text-muted-foreground" />
+                  <p className="mb-4">
+                    Automatically import customer data from your existing systems
+                  </p>
+                  <Button onClick={() => router.push('/dashboard/webhooks')} className="gap-2">
+                    Configure Webhooks
+                    <ExternalLink className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
 
           <Card className="card-hover">
             <CardHeader>
@@ -355,7 +345,7 @@ export default function Dashboard() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {customers.slice(0, 5).map((customer: any) => (
+                  {customers.map((customer: any) => (
                     <div
                       key={customer.id}
                       className="flex items-center justify-between p-3 bg-muted/50 rounded-lg hover:bg-muted transition-colors">
@@ -371,76 +361,31 @@ export default function Dashboard() {
                         onClick={() => router.push(`/customer/${customer.id}`)}
                         className="gap-1">
                         View Details
-                        <ChevronRight className="h-4 w-4" />
+                        <ExternalLink className="h-4 w-4" />
                       </Button>
                     </div>
                   ))}
+                  {customers.length > 0 && (
+                    <div className="flex justify-center mt-4">
+                      <Button
+                        variant="outline"
+                        onClick={() => router.push('/dashboard/data')}
+                        className="gap-2">
+                        View All Customers
+                        <ExternalLink className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>
           </Card>
-        </div>
 
-        <Card className="card-hover">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="w-5 h-5 text-primary" />
-              All Customers
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="flex items-center justify-center h-[300px]">
-                <Loader2 className="w-6 h-6 animate-spin text-primary" />
-              </div>
-            ) : customers.length === 0 ? (
-              <div className="text-center text-muted-foreground h-[300px] flex items-center justify-center">
-                <p>No customer data uploaded yet</p>
-              </div>
-            ) : (
-              <div className="rounded-md border">
-                <div className="grid grid-cols-3 gap-4 p-4 font-medium border-b">
-                  <div>Email</div>
-                  <div>Date Added</div>
-                  <div className="text-right">Actions</div>
-                </div>
-                <div className="divide-y">
-                  {customers.map((customer: any) => (
-                    <div key={customer.id} className="grid grid-cols-3 gap-4 p-4 items-center">
-                      <div className="font-medium">{customer.email}</div>
-                      <div className="text-muted-foreground">
-                        {new Date(customer.created_at).toLocaleDateString()}
-                      </div>
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => router.push(`/customer/${customer.id}`)}
-                          className="gap-1">
-                          View Details
-                          <ChevronRight className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <CSVMappingModal
-          isOpen={showMappingModal}
-          onClose={() => setShowMappingModal(false)}
-          csvHeaders={csvHeaders}
-          onStartImport={handleStartImport}
-        />
-
-        <div className="mt-8">
-          <SubscriptionManagement
-            subscriptionStatus={subscriptionData.status}
-            subscriptionPlan={subscriptionData.plan}
-            subscriptionPeriodEnd={subscriptionData.periodEnd}
+          <CSVMappingModal
+            isOpen={showMappingModal}
+            onClose={() => setShowMappingModal(false)}
+            csvHeaders={csvHeaders}
+            onStartImport={handleStartImport}
           />
         </div>
       </div>

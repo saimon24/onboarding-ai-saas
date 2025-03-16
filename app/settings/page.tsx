@@ -3,19 +3,26 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Loader2, ArrowLeft, Save } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
+import { DashboardNav } from '@/components/dashboard-nav';
 
-export default function Settings() {
+interface EmailContext {
+  tone: string;
+  brand_info: string;
+  additional_instructions: string;
+}
+
+export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [emailContext, setEmailContext] = useState({
-    tone: 'professional and friendly',
+  const [emailContext, setEmailContext] = useState<EmailContext>({
+    tone: '',
     brand_info: '',
     additional_instructions: '',
   });
@@ -23,10 +30,10 @@ export default function Settings() {
   const { toast } = useToast();
 
   useEffect(() => {
-    fetchUserProfile();
+    checkSessionAndFetchSettings();
   }, []);
 
-  const fetchUserProfile = async () => {
+  const checkSessionAndFetchSettings = async () => {
     try {
       const {
         data: { session },
@@ -44,13 +51,14 @@ export default function Settings() {
 
       if (error) throw error;
 
-      if (data?.email_context) {
+      if (data && data.email_context) {
         setEmailContext(data.email_context);
       }
     } catch (error: any) {
+      console.error('Error fetching settings:', error);
       toast({
         title: 'Error',
-        description: error.message,
+        description: error.message || 'Failed to load settings',
         variant: 'destructive',
       });
     } finally {
@@ -58,40 +66,29 @@ export default function Settings() {
     }
   };
 
-  const saveEmailContext = async () => {
-    setSaving(true);
+  const handleSaveSettings = async () => {
     try {
+      setSaving(true);
       const {
         data: { session },
       } = await supabase.auth.getSession();
-      if (!session) {
-        router.push('/auth/signin');
-        return;
-      }
-
-      // Validate the email context before saving
-      const validatedContext = {
-        tone: emailContext.tone || 'professional and friendly',
-        brand_info: emailContext.brand_info || '',
-        additional_instructions: emailContext.additional_instructions || '',
-      };
+      if (!session) throw new Error('Not authenticated');
 
       const { error } = await supabase
         .from('profiles')
-        .update({ email_context: validatedContext })
+        .update({
+          email_context: emailContext,
+        })
         .eq('id', session.user.id);
 
       if (error) throw error;
-
-      // Update the local state with validated values
-      setEmailContext(validatedContext);
 
       toast({
         title: 'Success',
         description: 'Email settings saved successfully',
       });
     } catch (error: any) {
-      console.error('Error saving email context:', error);
+      console.error('Error saving settings:', error);
       toast({
         title: 'Error',
         description: error.message || 'Failed to save settings',
@@ -102,103 +99,98 @@ export default function Settings() {
     }
   };
 
-  const handleInputChange = (field: string, value: string) => {
-    setEmailContext((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-6 h-6 animate-spin" />
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-background py-8 px-4">
-      <div className="container mx-auto max-w-4xl">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-bold">Settings</h1>
-            <p className="text-muted-foreground">Customize your email generation preferences</p>
+    <div className="flex min-h-screen bg-background">
+      <div className="hidden md:flex flex-col w-64 border-r p-6">
+        <DashboardNav />
+      </div>
+      <div className="flex-1">
+        <div className="container mx-auto py-8 px-4">
+          <div className="flex justify-between items-center mb-8">
+            <div>
+              <h1 className="text-3xl font-bold">Email Settings</h1>
+              <p className="text-muted-foreground">
+                Customize how AI-generated emails are created for your customers
+              </p>
+            </div>
           </div>
-          <Button variant="outline" onClick={() => router.push('/dashboard')} className="gap-2">
-            <ArrowLeft className="w-4 h-4" />
-            Back to Dashboard
-          </Button>
+
+          {loading ? (
+            <div className="flex items-center justify-center h-[300px]">
+              <Loader2 className="w-6 h-6 animate-spin text-primary" />
+            </div>
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>Email Generation Settings</CardTitle>
+                <CardDescription>
+                  Configure how AI generates personalized onboarding emails for your customers
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-2">
+                  <Label htmlFor="tone">Email Tone</Label>
+                  <Input
+                    id="tone"
+                    value={emailContext.tone}
+                    onChange={(e) => setEmailContext({ ...emailContext, tone: e.target.value })}
+                    placeholder="e.g. professional and friendly"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Describe the tone you want for your emails (e.g., professional, casual,
+                    friendly)
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="brand-info">Brand Information</Label>
+                  <Textarea
+                    id="brand-info"
+                    value={emailContext.brand_info}
+                    onChange={(e) =>
+                      setEmailContext({ ...emailContext, brand_info: e.target.value })
+                    }
+                    placeholder="Describe your company, products, and services"
+                    className="min-h-[100px]"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Provide information about your company, products, and services
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="additional-instructions">Additional Instructions</Label>
+                  <Textarea
+                    id="additional-instructions"
+                    value={emailContext.additional_instructions}
+                    onChange={(e) =>
+                      setEmailContext({
+                        ...emailContext,
+                        additional_instructions: e.target.value,
+                      })
+                    }
+                    placeholder="Any specific instructions for email generation"
+                    className="min-h-[100px]"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Any specific instructions or preferences for email generation
+                  </p>
+                </div>
+
+                <Button onClick={handleSaveSettings} disabled={saving} className="w-full">
+                  {saving ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    'Save Settings'
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
         </div>
-
-        <Card className="card-hover">
-          <CardHeader>
-            <CardTitle>Email Generation Settings</CardTitle>
-            <CardDescription>Customize how AI generates emails for your customers</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-2">
-              <Label htmlFor="tone">Email Tone</Label>
-              <Input
-                id="tone"
-                value={emailContext.tone}
-                onChange={(e) => handleInputChange('tone', e.target.value)}
-                placeholder="e.g., professional and friendly, casual, formal"
-                className="max-w-md"
-              />
-              <p className="text-sm text-muted-foreground">
-                Describe the tone you want your emails to have
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="brand_info">Brand Information</Label>
-              <Textarea
-                id="brand_info"
-                value={emailContext.brand_info}
-                onChange={(e) => handleInputChange('brand_info', e.target.value)}
-                placeholder="e.g., Company name, values, mission statement"
-                rows={4}
-                className="max-w-2xl"
-              />
-              <p className="text-sm text-muted-foreground">
-                Provide information about your brand that should be reflected in emails
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="additional_instructions">Additional Instructions</Label>
-              <Textarea
-                id="additional_instructions"
-                value={emailContext.additional_instructions}
-                onChange={(e) => handleInputChange('additional_instructions', e.target.value)}
-                placeholder="e.g., Always mention our 24/7 support, Include a link to our knowledge base"
-                rows={4}
-                className="max-w-2xl"
-              />
-              <p className="text-sm text-muted-foreground">
-                Any specific instructions for how emails should be structured or what they should
-                include
-              </p>
-            </div>
-
-            <div className="pt-4">
-              <Button onClick={saveEmailContext} disabled={saving} className="gap-2">
-                {saving ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-4 h-4" />
-                    Save Settings
-                  </>
-                )}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </div>
   );
