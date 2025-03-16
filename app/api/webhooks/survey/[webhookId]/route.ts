@@ -9,22 +9,20 @@ const supabase = createClient(
 
 export async function POST(req: Request, { params }: { params: { webhookId: string } }) {
   const webhookId = params.webhookId;
+  console.log('🚀 ~ POST ~ webhookId:', webhookId);
 
   try {
     // Find the profile with this webhook ID
     const { data: profiles, error: profileError } = await supabase
       .from('profiles')
-      .select('id, webhook_enabled, webhook_config')
+      .select('id, webhook_config')
       .eq('webhook_id', webhookId)
       .single();
 
+    console.log('🚀 ~ POST ~ profiles:', profiles);
     if (profileError || !profiles) {
+      console.log('🚀 ~ POST ~ profileError:', profileError);
       return NextResponse.json({ error: 'Invalid webhook ID' }, { status: 404 });
-    }
-
-    // Check if webhooks are enabled for this user
-    if (!profiles.webhook_enabled) {
-      return NextResponse.json({ error: 'Webhooks are disabled for this user' }, { status: 403 });
     }
 
     // Parse the request body
@@ -53,20 +51,84 @@ export async function POST(req: Request, { params }: { params: { webhookId: stri
       });
     }
 
+    console.log('🚀 ~ POST ~ fieldMappings:', fieldMappings);
+
     // Apply field mappings to transform the incoming data
     const surveyData: Record<string, any> = {};
     let email = '';
 
-    // Map the fields according to the user's configuration
-    for (const [targetField, sourceField] of Object.entries(fieldMappings)) {
-      if (sourceField && typeof sourceField === 'string') {
-        // Handle nested fields with dot notation (e.g., "response.email")
-        const value = sourceField.split('.').reduce((obj, key) => obj?.[key], body);
+    // Helper function to get value from nested path
+    const getValueFromPath = (obj: any, path: string) => {
+      // Handle array paths like "data.fields[type=HIDDEN_FIELDS&label=email].value"
+      if (path.includes('[') && path.includes(']')) {
+        const [arrayPath, conditions] = path.split('[');
+        const cleanConditions = conditions.replace(']', '');
+        const conditionPairs = cleanConditions.split('&').map((c) => {
+          const [key, value] = c.split('=');
+          return { key, value };
+        });
 
-        if (targetField === 'email' && value) {
-          email = value;
+        // Get the array from the path
+        const array = arrayPath.split('.').reduce((obj, key) => obj?.[key], obj);
+        if (Array.isArray(array)) {
+          // Find the matching item
+          const item = array.find((item) =>
+            conditionPairs.every((condition) => item[condition.key] === condition.value)
+          );
+          return item?.value;
+        }
+        return undefined;
+      }
+
+      // Regular nested path
+      return path.split('.').reduce((obj, key) => obj?.[key], obj);
+    };
+
+    // Helper function to get field label from path
+    const getFieldLabel = (obj: any, path: string): string | undefined => {
+      // If it's a direct field reference like "data.fields[1]", get the label
+      if (path.match(/data\.fields\[\d+\]/)) {
+        const index = parseInt(path.match(/\[(\d+)\]/)?.[1] || '0');
+        const fields = getValueFromPath(obj, 'data.fields');
+        if (Array.isArray(fields) && fields[index]) {
+          return fields[index].label;
+        }
+      }
+      return undefined;
+    };
+
+    // Helper function to get field value from path
+    const getFieldValue = (obj: any, path: string): any => {
+      // If it's a direct field reference like "data.fields[1]", get the value
+      if (path.match(/data\.fields\[\d+\]/)) {
+        const index = parseInt(path.match(/\[(\d+)\]/)?.[1] || '0');
+        const fields = getValueFromPath(obj, 'data.fields');
+        if (Array.isArray(fields) && fields[index]) {
+          return fields[index].value;
+        }
+      }
+      // For paths with conditions like "data.fields[type=HIDDEN_FIELDS&label=email]"
+      return getValueFromPath(obj, path);
+    };
+
+    // Map the fields according to the user's configuration
+    for (const [targetField, sourcePath] of Object.entries(fieldMappings)) {
+      if (sourcePath && typeof sourcePath === 'string') {
+        if (targetField === 'email') {
+          // For email field, use the standard path-based value
+          email = getValueFromPath(body, sourcePath);
         } else {
-          surveyData[targetField] = value;
+          // For other fields, get both label and value
+          const fieldLabel = getFieldLabel(body, sourcePath.replace('.value', ''));
+          const fieldValue = getFieldValue(body, sourcePath);
+
+          if (fieldLabel && fieldValue !== undefined) {
+            // Use the actual field label as the key and the field value as the value
+            surveyData[fieldLabel] = fieldValue;
+          } else {
+            // Fallback to the target field if no label is found
+            surveyData[targetField] = fieldValue;
+          }
         }
       }
     }
@@ -76,6 +138,7 @@ export async function POST(req: Request, { params }: { params: { webhookId: stri
       return NextResponse.json({ error: 'Email field mapping is required' }, { status: 400 });
     }
 
+    console.log('🚀 ~ SAVE ~ surveyData:', surveyData);
     // Insert the customer data
     const { error: insertError } = await supabase.from('customer_data').insert({
       profile_id: profiles.id,
