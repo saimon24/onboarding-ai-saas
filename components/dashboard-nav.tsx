@@ -2,14 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { 
-  LayoutDashboard, 
-  Upload, 
-  Database, 
-  Settings2, 
-  User, 
-  LogOut 
-} from 'lucide-react';
+import { LayoutDashboard, Upload, Database, Settings2, User, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
@@ -25,12 +18,12 @@ export function DashboardNav() {
     },
     {
       title: 'Data',
-      href: '/dashboard/data',
+      href: '/data',
       icon: Database,
     },
     {
       title: 'Webhooks',
-      href: '/dashboard/webhooks',
+      href: '/webhooks',
       icon: Upload,
     },
     {
@@ -58,27 +51,20 @@ export function DashboardNav() {
             key={item.href}
             href={item.href}
             className={cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
-              pathname === item.href
-                ? "bg-primary text-primary-foreground"
-                : "hover:bg-muted"
-            )}
-          >
+              'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
+              pathname === item.href ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+            )}>
             <item.icon className="h-4 w-4" />
             {item.title}
           </Link>
         ))}
       </div>
       <div className="mt-auto">
-        <Button
-          onClick={handleSignOut}
-          variant="ghost"
-          className="w-full justify-start gap-3 px-3"
-        >
+        <Button onClick={handleSignOut} variant="ghost" className="w-full justify-start gap-3 px-3">
           <LogOut className="h-4 w-4" />
           Sign Out
         </Button>
       </div>
     </div>
   );
-} 
+}

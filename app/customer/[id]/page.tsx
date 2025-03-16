@@ -4,7 +4,7 @@ import { Loader2 } from 'lucide-react';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import CustomerClient from './client';
-import { DashboardNav } from '@/components/dashboard-nav';
+import { DashboardLayout } from '@/components/dashboard-layout';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,20 +34,15 @@ export default async function CustomerPage({ params }: { params: { id: string } 
   }
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <div className="hidden md:flex flex-col w-64 border-r p-6">
-        <DashboardNav />
-      </div>
-      <div className="flex-1">
-        <Suspense
-          fallback={
-            <div className="flex items-center justify-center h-screen">
-              <Loader2 className="h-8 w-8 animate-spin" />
-            </div>
-          }>
-          <CustomerClient customerData={customerData} />
-        </Suspense>
-      </div>
-    </div>
+    <DashboardLayout>
+      <Suspense
+        fallback={
+          <div className="flex items-center justify-center h-screen">
+            <Loader2 className="h-8 w-8 animate-spin" />
+          </div>
+        }>
+        <CustomerClient customerData={customerData} />
+      </Suspense>
+    </DashboardLayout>
   );
 }

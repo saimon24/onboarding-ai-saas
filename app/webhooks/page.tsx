@@ -20,7 +20,7 @@ import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
-import { DashboardNav } from '@/components/dashboard-nav';
+import { DashboardLayout } from '@/components/dashboard-layout';
 
 interface WebhookConfig {
   field_mappings: Record<string, string>;
@@ -279,207 +279,198 @@ export default function WebhooksPage() {
   };
 
   return (
-    <div className="container mx-auto py-10">
-      <DashboardNav />
-      <div className="grid gap-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>Webhook Configuration</CardTitle>
-            <CardDescription>
-              Configure your webhook endpoint to receive survey responses.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div>Loading...</div>
-            ) : (
-              <Tabs defaultValue="setup">
-                <TabsList>
-                  <TabsTrigger value="setup">Setup</TabsTrigger>
-                  <TabsTrigger value="configure">Configure</TabsTrigger>
-                  <TabsTrigger value="test">Test</TabsTrigger>
-                </TabsList>
+    <DashboardLayout
+      heading="Webhook Configuration"
+      subheading="Configure your webhook endpoint to receive survey responses.">
+      <Card>
+        <CardContent>
+          {loading ? (
+            <div>Loading...</div>
+          ) : (
+            <Tabs defaultValue="setup">
+              <TabsList>
+                <TabsTrigger value="setup">Setup</TabsTrigger>
+                <TabsTrigger value="configure">Configure</TabsTrigger>
+                <TabsTrigger value="test">Test</TabsTrigger>
+              </TabsList>
 
-                <TabsContent value="setup">
-                  <div className="grid gap-4">
-                    <div>
-                      <Label>Your Webhook URL</Label>
-                      <div className="flex items-center gap-2 mt-1.5">
-                        <Input value={webhookUrl} readOnly />
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() =>
-                            handleCopyToClipboard(webhookUrl, 'Webhook URL copied to clipboard')
-                          }>
-                          <Copy className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-1">
-                        <Label>Webhook Security</Label>
-                        <div className="text-sm text-muted-foreground">
-                          Regenerate your webhook URL if you suspect it has been compromised.
-                        </div>
-                      </div>
+              <TabsContent value="setup">
+                <div className="grid gap-4">
+                  <div>
+                    <Label>Your Webhook URL</Label>
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <Input value={webhookUrl} readOnly />
                       <Button
                         variant="outline"
-                        onClick={handleRegenerateSecret}
-                        disabled={regeneratingSecret}>
-                        {regeneratingSecret ? (
-                          <>
-                            <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                            Regenerating...
-                          </>
-                        ) : (
-                          <>
-                            <RefreshCw className="mr-2 h-4 w-4" />
-                            Regenerate URL
-                          </>
-                        )}
+                        size="icon"
+                        onClick={() =>
+                          handleCopyToClipboard(webhookUrl, 'Webhook URL copied to clipboard')
+                        }>
+                        <Copy className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
-                </TabsContent>
 
-                <TabsContent value="configure">
-                  <div className="grid gap-4">
-                    <div>
-                      <Label>Example JSON Payload</Label>
-                      <div className="mt-1.5 space-y-2">
-                        <Textarea
-                          value={exampleJson}
-                          onChange={handleExampleJsonChange}
-                          placeholder="Paste your JSON payload here..."
-                          className="font-mono"
-                          rows={10}
-                        />
-                        <Button onClick={parseExampleJson}>Parse JSON</Button>
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <Label>Webhook Security</Label>
+                      <div className="text-sm text-muted-foreground">
+                        Regenerate your webhook URL if you suspect it has been compromised.
                       </div>
                     </div>
+                    <Button
+                      variant="outline"
+                      onClick={handleRegenerateSecret}
+                      disabled={regeneratingSecret}>
+                      {regeneratingSecret ? (
+                        <>
+                          <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                          Regenerating...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="mr-2 h-4 w-4" />
+                          Regenerate URL
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </TabsContent>
 
-                    {parsingError && (
-                      <Alert variant="destructive">
-                        <AlertCircle className="h-4 w-4" />
-                        <AlertTitle>Error</AlertTitle>
-                        <AlertDescription>{parsingError}</AlertDescription>
-                      </Alert>
-                    )}
+              <TabsContent value="configure">
+                <div className="grid gap-4">
+                  <div>
+                    <Label>Example JSON Payload</Label>
+                    <div className="mt-1.5 space-y-2">
+                      <Textarea
+                        value={exampleJson}
+                        onChange={handleExampleJsonChange}
+                        placeholder="Paste your JSON payload here..."
+                        className="font-mono"
+                        rows={10}
+                      />
+                      <Button onClick={parseExampleJson}>Parse JSON</Button>
+                    </div>
+                  </div>
 
-                    {parsedFields.length > 0 && (
-                      <div className="space-y-4">
-                        <div>
-                          <Label>Select Email Field</Label>
-                          <div className="mt-1.5 flex flex-wrap gap-2">
-                            {parsedFields.map((field) => (
-                              <Badge
-                                key={field}
-                                variant={selectedEmailField === field ? 'default' : 'outline'}
-                                className="cursor-pointer"
-                                onClick={() => setSelectedEmailField(field)}>
-                                {field}
-                                {selectedEmailField === field && (
-                                  <CheckCircle2 className="ml-1 h-3 w-3" />
-                                )}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
+                  {parsingError && (
+                    <Alert variant="destructive">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertTitle>Error</AlertTitle>
+                      <AlertDescription>{parsingError}</AlertDescription>
+                    </Alert>
+                  )}
 
-                        <div>
-                          <Label>Select Survey Fields</Label>
-                          <div className="mt-1.5 flex flex-wrap gap-2">
-                            {parsedFields.map((field) => (
-                              <Badge
-                                key={field}
-                                variant={
-                                  selectedSurveyFields.includes(field) ? 'default' : 'outline'
-                                }
-                                className="cursor-pointer"
-                                onClick={() => toggleSurveyField(field)}>
-                                {field}
-                                {selectedSurveyFields.includes(field) && (
-                                  <CheckCircle2 className="ml-1 h-3 w-3" />
-                                )}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-
-                        <Button onClick={applyFieldMappings}>
-                          Apply Field Mappings
-                          <ArrowRight className="ml-2 h-4 w-4" />
-                        </Button>
-                      </div>
-                    )}
-
+                  {parsedFields.length > 0 && (
                     <div className="space-y-4">
                       <div>
-                        <Label>Current Field Mappings</Label>
-                        <div className="mt-1.5 space-y-2">
-                          {Object.entries(fieldMappings).map(([field, path]) => (
-                            <div key={field} className="flex items-center gap-2">
-                              <Input value={field} readOnly />
-                              <ArrowRight className="h-4 w-4" />
-                              <Input value={path} readOnly />
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleRemoveFieldMapping(field)}>
-                                Remove
-                              </Button>
-                            </div>
+                        <Label>Select Email Field</Label>
+                        <div className="mt-1.5 flex flex-wrap gap-2">
+                          {parsedFields.map((field) => (
+                            <Badge
+                              key={field}
+                              variant={selectedEmailField === field ? 'default' : 'outline'}
+                              className="cursor-pointer"
+                              onClick={() => setSelectedEmailField(field)}>
+                              {field}
+                              {selectedEmailField === field && (
+                                <CheckCircle2 className="ml-1 h-3 w-3" />
+                              )}
+                            </Badge>
                           ))}
                         </div>
                       </div>
 
-                      <div className="flex items-end gap-2">
-                        <div className="flex-1">
-                          <Label>Field Name</Label>
-                          <Input
-                            value={newFieldName}
-                            onChange={(e) => setNewFieldName(e.target.value)}
-                            placeholder="e.g., company_name"
-                          />
+                      <div>
+                        <Label>Select Survey Fields</Label>
+                        <div className="mt-1.5 flex flex-wrap gap-2">
+                          {parsedFields.map((field) => (
+                            <Badge
+                              key={field}
+                              variant={selectedSurveyFields.includes(field) ? 'default' : 'outline'}
+                              className="cursor-pointer"
+                              onClick={() => toggleSurveyField(field)}>
+                              {field}
+                              {selectedSurveyFields.includes(field) && (
+                                <CheckCircle2 className="ml-1 h-3 w-3" />
+                              )}
+                            </Badge>
+                          ))}
                         </div>
-                        <div className="flex-1">
-                          <Label>JSON Path</Label>
-                          <Input
-                            value={newFieldPath}
-                            onChange={(e) => setNewFieldPath(e.target.value)}
-                            placeholder="e.g., data.fields[0].value"
-                          />
-                        </div>
-                        <Button onClick={handleAddFieldMapping}>Add Field</Button>
                       </div>
 
-                      <Button onClick={handleSaveFieldMappings} disabled={saving}>
-                        {saving ? 'Saving...' : 'Save Field Mappings'}
+                      <Button onClick={applyFieldMappings}>
+                        Apply Field Mappings
+                        <ArrowRight className="ml-2 h-4 w-4" />
                       </Button>
                     </div>
-                  </div>
-                </TabsContent>
+                  )}
 
-                <TabsContent value="test">
-                  <div className="grid gap-4">
+                  <div className="space-y-4">
                     <div>
-                      <Label>Last Received Webhook Data</Label>
-                      <Textarea
-                        value={testEventJson}
-                        readOnly
-                        className="font-mono mt-1.5"
-                        rows={20}
-                      />
+                      <Label>Current Field Mappings</Label>
+                      <div className="mt-1.5 space-y-2">
+                        {Object.entries(fieldMappings).map(([field, path]) => (
+                          <div key={field} className="flex items-center gap-2">
+                            <Input value={field} readOnly />
+                            <ArrowRight className="h-4 w-4" />
+                            <Input value={path} readOnly />
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemoveFieldMapping(field)}>
+                              Remove
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
+
+                    <div className="flex items-end gap-2">
+                      <div className="flex-1">
+                        <Label>Field Name</Label>
+                        <Input
+                          value={newFieldName}
+                          onChange={(e) => setNewFieldName(e.target.value)}
+                          placeholder="e.g., company_name"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <Label>JSON Path</Label>
+                        <Input
+                          value={newFieldPath}
+                          onChange={(e) => setNewFieldPath(e.target.value)}
+                          placeholder="e.g., data.fields[0].value"
+                        />
+                      </div>
+                      <Button onClick={handleAddFieldMapping}>Add Field</Button>
+                    </div>
+
+                    <Button onClick={handleSaveFieldMappings} disabled={saving}>
+                      {saving ? 'Saving...' : 'Save Field Mappings'}
+                    </Button>
                   </div>
-                </TabsContent>
-              </Tabs>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="test">
+                <div className="grid gap-4">
+                  <div>
+                    <Label>Last Received Webhook Data</Label>
+                    <Textarea
+                      value={testEventJson}
+                      readOnly
+                      className="font-mono mt-1.5"
+                      rows={20}
+                    />
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
+          )}
+        </CardContent>
+      </Card>
+    </DashboardLayout>
   );
 }
