@@ -14,6 +14,7 @@
       - `email` (text)
       - `survey_data` (jsonb)
       - `ai_email` (text)
+      - `email_sent` (boolean)
       - `created_at` (timestamp)
       - `updated_at` (timestamp)
 
@@ -37,6 +38,7 @@ CREATE TABLE IF NOT EXISTS customer_data (
   email text NOT NULL,
   survey_data jsonb NOT NULL DEFAULT '{}',
   ai_email text,
+  email_sent boolean DEFAULT false,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );

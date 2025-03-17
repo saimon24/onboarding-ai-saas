@@ -21,6 +21,13 @@ import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { DashboardLayout } from '@/components/dashboard-layout';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface WebhookConfig {
   field_mappings: Record<string, string>;
@@ -32,6 +39,13 @@ interface Profile {
   webhook_id: string;
   webhook_config: WebhookConfig;
   webhook_last_received?: string;
+}
+
+interface ParsedField {
+  path: string;
+  label: string;
+  type?: string;
+  options?: Array<{ id: string; text: string }>;
 }
 
 export default function WebhooksPage() {
@@ -46,10 +60,11 @@ export default function WebhooksPage() {
   const [webhookUrl, setWebhookUrl] = useState('');
   const [exampleJson, setExampleJson] = useState('');
   const [parsedExample, setParsedExample] = useState<any>(null);
-  const [parsedFields, setParsedFields] = useState<string[]>([]);
+  const [parsedFields, setParsedFields] = useState<ParsedField[]>([]);
   const [selectedEmailField, setSelectedEmailField] = useState('');
-  const [selectedSurveyFields, setSelectedSurveyFields] = useState<string[]>([]);
+  const [selectedSurveyFields, setSelectedSurveyFields] = useState<Record<string, string>>({});
   const [parsingError, setParsingError] = useState('');
+  const [previewData, setPreviewData] = useState<any>(null);
   const router = useRouter();
   const { toast } = useToast();
 
@@ -157,14 +172,30 @@ export default function WebhooksPage() {
   };
 
   const handleSaveFieldMappings = async () => {
-    if (!profile) return;
+    if (!profile || !selectedEmailField) {
+      toast({
+        title: 'Error',
+        description: 'Please select an email field',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     setSaving(true);
 
+    const newMappings: Record<string, string> = {
+      email: selectedEmailField,
+    };
+
+    // Add selected survey fields with their full paths
+    Object.entries(selectedSurveyFields).forEach(([label, path]) => {
+      newMappings[label] = path;
+    });
+
     const updatedConfig = {
       ...profile.webhook_config,
-      field_mappings: fieldMappings,
-      test_event: profile.webhook_config?.test_event || parsedExample || undefined,
+      field_mappings: newMappings,
+      test_event: parsedExample || profile.webhook_config?.test_event,
     };
 
     const { error } = await supabase
@@ -184,6 +215,7 @@ export default function WebhooksPage() {
     }
 
     setProfile({ ...profile, webhook_config: updatedConfig });
+    setFieldMappings(newMappings);
     toast({
       title: 'Success',
       description: 'Field mappings saved successfully',
@@ -198,7 +230,7 @@ export default function WebhooksPage() {
     setParsedExample(null);
     setParsedFields([]);
     setSelectedEmailField('');
-    setSelectedSurveyFields([]);
+    setSelectedSurveyFields({});
   };
 
   const parseExampleJson = () => {
@@ -207,75 +239,103 @@ export default function WebhooksPage() {
       setParsedExample(parsed);
 
       // Extract all possible fields
-      const fields: string[] = [];
-      const extractFields = (obj: any, prefix = '') => {
-        if (Array.isArray(obj)) {
-          // For arrays, we want to support field selection by conditions
-          // Example: data.fields[type=HIDDEN_FIELDS&label=email].value
-          obj.forEach((item, index) => {
-            if (typeof item === 'object' && item !== null) {
-              // If the array item has type and label fields, create a conditional path
-              if (item.type && item.label) {
-                fields.push(`${prefix}[type=${item.type}&label=${item.label}].value`);
-              }
-              // Also add regular array access
-              extractFields(item, `${prefix}[${index}]`);
-            }
-          });
-        } else if (typeof obj === 'object' && obj !== null) {
-          Object.entries(obj).forEach(([key, value]) => {
-            const newPrefix = prefix ? `${prefix}.${key}` : key;
-            if (typeof value === 'object' && value !== null) {
-              extractFields(value, newPrefix);
-            } else {
-              fields.push(newPrefix);
-            }
-          });
+      const fields: ParsedField[] = [];
+
+      // Helper function to get field options
+      const getFieldOptions = (field: any) => {
+        if (field.type === 'MULTIPLE_CHOICE' || field.type === 'CHECKBOXES') {
+          return field.options;
         }
+        return undefined;
       };
 
-      extractFields(parsed);
+      // Process fields array
+      if (parsed.data?.fields && Array.isArray(parsed.data.fields)) {
+        const seenLabels = new Set<string>();
+
+        parsed.data.fields.forEach((field: any, index: number) => {
+          // Skip fields that are individual checkbox options (they have the same base label)
+          if (field.label && !field.label.includes('(')) {
+            // Check if we've already processed this field (for checkboxes/multiple choice)
+            if (!seenLabels.has(field.label)) {
+              seenLabels.add(field.label);
+              fields.push({
+                path: `data.fields[${index}]`,
+                label: field.label,
+                type: field.type,
+                options: getFieldOptions(field),
+              });
+            }
+          }
+        });
+      }
+
       setParsedFields(fields);
       setParsingError('');
+      updatePreview();
     } catch (error) {
       console.error('Error parsing JSON:', error);
       setParsingError('Invalid JSON format');
       setParsedExample(null);
       setParsedFields([]);
+      setPreviewData(null);
     }
   };
 
-  const toggleSurveyField = (field: string) => {
-    setSelectedSurveyFields((prev) =>
-      prev.includes(field) ? prev.filter((f) => f !== field) : [...prev, field]
-    );
-  };
+  const updatePreview = () => {
+    if (!parsedExample) return;
 
-  const applyFieldMappings = async () => {
-    if (!selectedEmailField) {
-      toast({
-        title: 'Error',
-        description: 'Please select an email field',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    const newMappings: Record<string, string> = {
-      email: selectedEmailField,
+    const preview: Record<string, any> = {
+      email: '',
+      survey_data: {},
     };
 
-    // Add selected survey fields with their full paths
-    selectedSurveyFields.forEach((field) => {
-      // Use the field path as both key and value
-      newMappings[field] = field;
+    // Helper function to get value from path
+    const getValueFromPath = (path: string) => {
+      const parts = path.split('.');
+      let value = parsedExample;
+      for (const part of parts) {
+        if (part.includes('[') && part.includes(']')) {
+          const arrayName = part.split('[')[0];
+          const index = parseInt(part.split('[')[1].split(']')[0]);
+          value = value[arrayName][index];
+        } else {
+          value = value[part];
+        }
+      }
+      return value;
+    };
+
+    // Get email
+    if (selectedEmailField) {
+      preview.email = getValueFromPath(`${selectedEmailField}.value`);
+    }
+
+    // Get survey data
+    Object.entries(selectedSurveyFields).forEach(([label, path]) => {
+      if (!path) return; // Skip empty mappings
+
+      const field = parsedFields.find((f) => f.path === path);
+      if (field) {
+        const rawValue = getValueFromPath(`${path}.value`);
+
+        // Handle multiple choice and checkbox fields
+        if (field.type === 'MULTIPLE_CHOICE' && field.options && Array.isArray(rawValue)) {
+          const selectedOption = field.options.find((opt) => rawValue.includes(opt.id));
+          preview.survey_data[label] = selectedOption?.text || '';
+        } else if (field.type === 'CHECKBOXES' && field.options && Array.isArray(rawValue)) {
+          const selectedOptions = field.options
+            .filter((opt) => rawValue.includes(opt.id))
+            .map((opt) => opt.text);
+          preview.survey_data[label] = selectedOptions.length ? selectedOptions : [];
+        } else {
+          preview.survey_data[label] = rawValue || '';
+        }
+      }
     });
 
-    setFieldMappings(newMappings);
-    toast({
-      title: 'Success',
-      description: 'Field mappings applied',
-    });
+    console.log('Preview data:', preview); // Add logging to debug
+    setPreviewData(preview);
   };
 
   return (
@@ -340,6 +400,26 @@ export default function WebhooksPage() {
 
               <TabsContent value="configure">
                 <div className="grid gap-4">
+                  {profile?.webhook_config?.field_mappings &&
+                    Object.keys(profile.webhook_config.field_mappings).length > 0 && (
+                      <div>
+                        <Label>Current Field Mappings</Label>
+                        <div className="mt-1.5 p-4 bg-muted rounded-lg space-y-2">
+                          {Object.entries(profile.webhook_config.field_mappings).map(
+                            ([field, path]) => (
+                              <div key={field} className="flex items-center gap-2">
+                                <Badge variant="outline">{field}</Badge>
+                                <ArrowRight className="h-4 w-4" />
+                                <code className="text-sm bg-background rounded px-2 py-1">
+                                  {path}
+                                </code>
+                              </div>
+                            )
+                          )}
+                        </div>
+                      </div>
+                    )}
+
                   <div>
                     <Label>Example JSON Payload</Label>
                     <div className="mt-1.5 space-y-2">
@@ -363,94 +443,80 @@ export default function WebhooksPage() {
                   )}
 
                   {parsedFields.length > 0 && (
-                    <div className="space-y-4">
+                    <div className="space-y-6">
                       <div>
                         <Label>Select Email Field</Label>
-                        <div className="mt-1.5 flex flex-wrap gap-2">
-                          {parsedFields.map((field) => (
-                            <Badge
-                              key={field}
-                              variant={selectedEmailField === field ? 'default' : 'outline'}
-                              className="cursor-pointer"
-                              onClick={() => setSelectedEmailField(field)}>
-                              {field}
-                              {selectedEmailField === field && (
-                                <CheckCircle2 className="ml-1 h-3 w-3" />
-                              )}
-                            </Badge>
-                          ))}
-                        </div>
+                        <Select
+                          value={selectedEmailField}
+                          onValueChange={(value) => {
+                            setSelectedEmailField(value);
+                            setTimeout(updatePreview, 0);
+                          }}>
+                          <SelectTrigger className="mt-1.5">
+                            <SelectValue placeholder="Select the field containing the email" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {parsedFields.map((field) => (
+                              <SelectItem key={field.path} value={field.path}>
+                                {field.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
 
                       <div>
-                        <Label>Select Survey Fields</Label>
-                        <div className="mt-1.5 flex flex-wrap gap-2">
+                        <Label>Map Survey Fields</Label>
+                        <div className="mt-1.5 grid gap-4">
                           {parsedFields.map((field) => (
-                            <Badge
-                              key={field}
-                              variant={selectedSurveyFields.includes(field) ? 'default' : 'outline'}
-                              className="cursor-pointer"
-                              onClick={() => toggleSurveyField(field)}>
-                              {field}
-                              {selectedSurveyFields.includes(field) && (
-                                <CheckCircle2 className="ml-1 h-3 w-3" />
-                              )}
-                            </Badge>
+                            <div key={field.path} className="flex items-center gap-4">
+                              <div className="flex-1">
+                                <Input value={field.label} readOnly />
+                              </div>
+                              <ArrowRight className="h-4 w-4" />
+                              <div className="flex-1">
+                                <Select
+                                  value={selectedSurveyFields[field.label] || ''}
+                                  onValueChange={(value) => {
+                                    setSelectedSurveyFields((prev) => ({
+                                      ...prev,
+                                      [field.label]: value,
+                                    }));
+                                    setTimeout(updatePreview, 0);
+                                  }}>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select field mapping" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {parsedFields.map((f) => (
+                                      <SelectItem key={f.path} value={f.path}>
+                                        {f.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
                           ))}
                         </div>
                       </div>
 
-                      <Button onClick={applyFieldMappings}>
-                        Apply Field Mappings
-                        <ArrowRight className="ml-2 h-4 w-4" />
+                      {previewData && (
+                        <div className="mt-6">
+                          <Label>Data Preview</Label>
+                          <div className="mt-1.5 p-4 bg-muted rounded-lg">
+                            <pre className="whitespace-pre-wrap overflow-auto">
+                              {JSON.stringify(previewData, null, 2)}
+                            </pre>
+                          </div>
+                        </div>
+                      )}
+
+                      <Button onClick={handleSaveFieldMappings} disabled={saving}>
+                        {saving ? 'Saving...' : 'Save Field Mappings'}
                       </Button>
                     </div>
                   )}
-
-                  <div className="space-y-4">
-                    <div>
-                      <Label>Current Field Mappings</Label>
-                      <div className="mt-1.5 space-y-2">
-                        {Object.entries(fieldMappings).map(([field, path]) => (
-                          <div key={field} className="flex items-center gap-2">
-                            <Input value={field} readOnly />
-                            <ArrowRight className="h-4 w-4" />
-                            <Input value={path} readOnly />
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleRemoveFieldMapping(field)}>
-                              Remove
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="flex items-end gap-2">
-                      <div className="flex-1">
-                        <Label>Field Name</Label>
-                        <Input
-                          value={newFieldName}
-                          onChange={(e) => setNewFieldName(e.target.value)}
-                          placeholder="e.g., company_name"
-                        />
-                      </div>
-                      <div className="flex-1">
-                        <Label>JSON Path</Label>
-                        <Input
-                          value={newFieldPath}
-                          onChange={(e) => setNewFieldPath(e.target.value)}
-                          placeholder="e.g., data.fields[0].value"
-                        />
-                      </div>
-                      <Button onClick={handleAddFieldMapping}>Add Field</Button>
-                    </div>
-
-                    <Button onClick={handleSaveFieldMappings} disabled={saving}>
-                      {saving ? 'Saving...' : 'Save Field Mappings'}
-                    </Button>
-                  </div>
                 </div>
               </TabsContent>
 

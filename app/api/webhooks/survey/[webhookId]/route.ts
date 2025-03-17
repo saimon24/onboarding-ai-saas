@@ -9,7 +9,6 @@ const supabase = createClient(
 
 export async function POST(req: Request, { params }: { params: { webhookId: string } }) {
   const webhookId = params.webhookId;
-  console.log('🚀 ~ POST ~ webhookId:', webhookId);
 
   try {
     // Find the profile with this webhook ID
@@ -19,9 +18,7 @@ export async function POST(req: Request, { params }: { params: { webhookId: stri
       .eq('webhook_id', webhookId)
       .single();
 
-    console.log('🚀 ~ POST ~ profiles:', profiles);
     if (profileError || !profiles) {
-      console.log('🚀 ~ POST ~ profileError:', profileError);
       return NextResponse.json({ error: 'Invalid webhook ID' }, { status: 404 });
     }
 
@@ -50,8 +47,6 @@ export async function POST(req: Request, { params }: { params: { webhookId: stri
         message: 'Test event received. Please configure field mappings in your webhook settings.',
       });
     }
-
-    console.log('🚀 ~ POST ~ fieldMappings:', fieldMappings);
 
     // Apply field mappings to transform the incoming data
     const surveyData: Record<string, any> = {};
@@ -104,7 +99,28 @@ export async function POST(req: Request, { params }: { params: { webhookId: stri
         const index = parseInt(path.match(/\[(\d+)\]/)?.[1] || '0');
         const fields = getValueFromPath(obj, 'data.fields');
         if (Array.isArray(fields) && fields[index]) {
-          return fields[index].value;
+          const field = fields[index];
+
+          // Handle multiple choice and checkbox questions
+          if (
+            (field.type === 'MULTIPLE_CHOICE' || field.type === 'CHECKBOXES') &&
+            Array.isArray(field.value) &&
+            field.options
+          ) {
+            // Map the selected IDs to their text values
+            const selectedTexts = field.value.map((id: string) => {
+              const option = field.options.find(
+                (opt: { id: string; text: string }) => opt.id === id
+              );
+              return option ? option.text : id;
+            });
+
+            // For multiple choice, return first selected text (since it's single select)
+            // For checkboxes, return array of selected texts
+            return field.type === 'MULTIPLE_CHOICE' ? selectedTexts[0] : selectedTexts;
+          }
+
+          return field.value;
         }
       }
       // For paths with conditions like "data.fields[type=HIDDEN_FIELDS&label=email]"
@@ -138,7 +154,6 @@ export async function POST(req: Request, { params }: { params: { webhookId: stri
       return NextResponse.json({ error: 'Email field mapping is required' }, { status: 400 });
     }
 
-    console.log('🚀 ~ SAVE ~ surveyData:', surveyData);
     // Insert the customer data
     const { error: insertError } = await supabase.from('customer_data').insert({
       profile_id: profiles.id,

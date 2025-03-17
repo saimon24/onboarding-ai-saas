@@ -6,105 +6,101 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-export async function POST(req: Request) {
+// Define email length options
+type EmailLength = 'short' | 'medium' | 'long';
+
+interface EmailContext {
+  tone: string;
+  brand_info: string;
+  additional_instructions: string;
+  system_context?: string;
+  welcome_line?: string;
+  end_line?: string;
+  pre_content_block?: string;
+  post_content_block?: string;
+  email_length?: EmailLength;
+}
+
+export async function POST(request: Request) {
   try {
-    // Parse request body with error handling
-    const body = await req.json().catch(() => ({}));
-    const { surveyData, customerId, userId } = body;
+    const { customerEmail, surveyData, context } = await request.json();
 
-    // Validate required parameters
-    if (!surveyData) {
-      return NextResponse.json({ error: 'Survey data is required' }, { status: 400 });
-    }
+    // Construct the system message
+    const systemMessage = `You are an expert email writer with the following characteristics:
+${context.systemContext || ''}
+Your task is to write a personalized email based on survey data.
+Tone: ${context.tone}
+${context.brandInfo ? `Brand Information: ${context.brandInfo}` : ''}
+Length: ${context.emailLength} (short: 2-3 sentences, medium: 4-6 sentences, long: 7-10 sentences)
+Important: Do not include any greeting or salutation at the start of the email body as it will be added separately.`;
 
-    // Default email context in case we can't fetch the profile
-    let emailContext = {
-      tone: 'professional and friendly',
-      brand_info: '',
-      additional_instructions: '',
-    };
+    // Construct the user message
+    const userMessage = `Write a personalized email for ${customerEmail} based on their survey responses:
+${JSON.stringify(surveyData, null, 2)}
 
-    // Only try to fetch profile if userId is provided
-    if (userId) {
-      try {
-        const { data: profileData, error: profileError } = await supabase
-          .from('profiles')
-          .select('email_context')
-          .eq('id', userId)
-          .single();
+Generate both a subject line and email body that references their specific survey responses.
+Make it personal and engaging.
+Do not include any greeting - the greeting will be handled separately.`;
 
-        if (!profileError && profileData?.email_context) {
-          emailContext = profileData.email_context;
-        }
-      } catch (profileFetchError) {
-        console.error('Error fetching profile:', profileFetchError);
-        // Continue with default email context
-      }
-    }
-
-    // Build the prompt with the email context
-    const prompt = `
-      Generate a ${
-        emailContext.tone
-      } onboarding email for a customer based on their survey responses.
-      The email should be personalized and reference their specific responses.
-      
-      ${emailContext.brand_info ? `Brand information: ${emailContext.brand_info}` : ''}
-      
-      Survey responses:
-      ${Object.entries(surveyData)
-        .filter(([key]) => key !== 'email')
-        .map(([key, value]) => `${key}: ${value}`)
-        .join('\n')}
-      
-      Please write an email that:
-      1. Welcomes them personally
-      2. References their specific needs/responses
-      3. Provides next steps
-      4. Maintains a ${emailContext.tone} tone
-      ${emailContext.additional_instructions ? `5. ${emailContext.additional_instructions}` : ''}
-    `;
-
+    // Call OpenAI API
     const completion = await openai.chat.completions.create({
       model: 'gpt-4',
       messages: [
-        {
-          role: 'system',
-          content: `You are a professional customer success manager writing an onboarding email. ${emailContext.additional_instructions}`,
-        },
-        {
-          role: 'user',
-          content: prompt,
-        },
+        { role: 'system', content: systemMessage },
+        { role: 'user', content: userMessage },
       ],
       temperature: 0.7,
     });
 
-    const generatedEmail = completion.choices[0].message.content;
+    const response = completion.choices[0]?.message?.content;
+    if (!response) {
+      throw new Error('No response from OpenAI');
+    }
 
-    // Store the generated email in the database if customerId is provided
-    if (customerId) {
-      try {
-        const { error: updateError } = await supabase
-          .from('customer_data')
-          .update({ ai_email: generatedEmail })
-          .eq('id', customerId);
+    // Parse the response to extract subject and email body
+    let subject = '';
+    let email = '';
 
-        if (updateError) {
-          console.error('Failed to save generated email:', updateError);
-          // Continue anyway - we'll return the email even if saving fails
-        }
-      } catch (updateError) {
-        console.error('Error updating customer data:', updateError);
-        // Continue anyway - we'll return the email even if saving fails
+    // The AI should return the response in a format like:
+    // Subject: The subject line
+    // Body: The email content
+    const parts = response.split('\n');
+    for (let i = 0; i < parts.length; i++) {
+      const line = parts[i];
+      if (line.toLowerCase().startsWith('subject:')) {
+        subject = line.substring('subject:'.length).trim();
+      } else if (line.toLowerCase().startsWith('body:')) {
+        email = parts
+          .slice(i + 1)
+          .join('\n')
+          .trim();
+        break;
       }
     }
 
-    return NextResponse.json({ email: generatedEmail });
+    // If parsing fails, use some fallbacks
+    if (!subject) {
+      subject = 'Welcome to our community!';
+    }
+    if (!email) {
+      email = response; // Use the entire response as email body
+    }
+
+    // Add welcome line if provided, otherwise leave as is
+    if (context.welcomeLine) {
+      email = `${context.welcomeLine}\n\n${email.trim()}`;
+    }
+
+    // Add end line if provided
+    if (context.endLine) {
+      email = `${email}\n\n${context.endLine}`;
+    }
+
+    return NextResponse.json({ email, subject });
   } catch (error: any) {
-    console.error('Error in generate-email API:', error);
+    console.error('Email generation error:', error);
     return NextResponse.json(
-      { error: error.message || 'An unexpected error occurred' },
+      { error: error.message || 'Failed to generate email' },
       { status: 500 }
     );
   }

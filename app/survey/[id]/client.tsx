@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Loader2, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Loader2, RefreshCw, Trash2, Mail } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 
@@ -13,13 +13,61 @@ interface CustomerData {
   email: string;
   survey_data: Record<string, any>;
   ai_email?: string;
+  email_sent: boolean;
 }
 
 export default function CustomerClient({ customerData }: { customerData: CustomerData }) {
   const [customer, setCustomer] = useState<CustomerData>(customerData);
   const [generating, setGenerating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      const { error } = await supabase.from('customer_data').delete().eq('id', customer.id);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Success',
+        description: 'Survey entry deleted successfully',
+      });
+      router.push('/dashboard/data');
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const toggleEmailSent = async () => {
+    try {
+      const { error } = await supabase
+        .from('customer_data')
+        .update({ email_sent: !customer.email_sent })
+        .eq('id', customer.id);
+
+      if (error) throw error;
+
+      setCustomer({ ...customer, email_sent: !customer.email_sent });
+      toast({
+        title: 'Success',
+        description: `Email marked as ${!customer.email_sent ? 'sent' : 'not sent'}`,
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      });
+    }
+  };
 
   const generateEmail = async () => {
     setGenerating(true);
@@ -67,25 +115,51 @@ export default function CustomerClient({ customerData }: { customerData: Custome
     <div className="container mx-auto py-8 px-4">
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-3xl font-bold">Customer Details</h1>
-          <p className="text-muted-foreground">View and manage customer information</p>
+          <h1 className="text-3xl font-bold">Survey Details</h1>
+          <p className="text-muted-foreground">View and manage survey response</p>
         </div>
-        <Button variant="outline" onClick={() => router.push('/dashboard/data')} className="gap-2">
-          <ArrowLeft className="h-4 w-4" />
-          Back to Data
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => router.push('/dashboard/data')}
+            className="gap-2">
+            <ArrowLeft className="h-4 w-4" />
+            Back to Data
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={handleDelete}
+            disabled={deleting}
+            className="gap-2">
+            {deleting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Trash2 className="h-4 w-4" />
+            )}
+            Delete Entry
+          </Button>
+        </div>
       </div>
 
       <div className="space-y-6">
         <Card>
           <CardHeader>
-            <CardTitle>Customer Information</CardTitle>
+            <CardTitle>Response Information</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div>
-                <p className="font-medium">Email</p>
-                <p className="text-muted-foreground">{customer.email}</p>
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="font-medium">Email</p>
+                  <p className="text-muted-foreground">{customer.email}</p>
+                </div>
+                <Button
+                  variant={customer.email_sent ? 'default' : 'outline'}
+                  onClick={toggleEmailSent}
+                  className="gap-2">
+                  <Mail className="h-4 w-4" />
+                  {customer.email_sent ? 'Email Sent' : 'Mark as Sent'}
+                </Button>
               </div>
               <div>
                 <p className="font-medium">Survey Responses</p>

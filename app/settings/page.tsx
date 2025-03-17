@@ -7,15 +7,31 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { DashboardNav } from '@/components/dashboard-nav';
 
+type EmailLength = 'short' | 'medium' | 'long';
+
 interface EmailContext {
   tone: string;
   brand_info: string;
   additional_instructions: string;
+  system_context?: string;
+  welcome_line?: string;
+  end_line?: string;
+  pre_content_block?: string;
+  post_content_block?: string;
+  email_length?: EmailLength;
+  default_subject?: string;
 }
 
 export default function SettingsPage() {
@@ -25,6 +41,13 @@ export default function SettingsPage() {
     tone: '',
     brand_info: '',
     additional_instructions: '',
+    system_context: '',
+    welcome_line: '',
+    end_line: '',
+    pre_content_block: '',
+    post_content_block: '',
+    email_length: 'medium',
+    default_subject: '',
   });
   const router = useRouter();
   const { toast } = useToast();
@@ -129,6 +152,22 @@ export default function SettingsPage() {
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="space-y-2">
+                  <Label htmlFor="system-context">AI Personality</Label>
+                  <Textarea
+                    id="system-context"
+                    value={emailContext.system_context}
+                    onChange={(e) =>
+                      setEmailContext({ ...emailContext, system_context: e.target.value })
+                    }
+                    placeholder="e.g. You act like Simon Grimm, a popular YouTuber with great knowledge about React Native"
+                    className="min-h-[100px]"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Define a specific personality or context for the AI to use when writing emails
+                  </p>
+                </div>
+
+                <div className="space-y-2">
                   <Label htmlFor="tone">Email Tone</Label>
                   <Input
                     id="tone"
@@ -139,6 +178,55 @@ export default function SettingsPage() {
                   <p className="text-sm text-muted-foreground">
                     Describe the tone you want for your emails (e.g., professional, casual,
                     friendly)
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="email-length">Email Length</Label>
+                  <Select
+                    value={emailContext.email_length}
+                    onValueChange={(value: EmailLength) =>
+                      setEmailContext({ ...emailContext, email_length: value })
+                    }>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select email length" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="short">Short</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="long">Long</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-sm text-muted-foreground">
+                    Choose the preferred length for your generated emails
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="welcome-line">Welcome Line</Label>
+                  <Input
+                    id="welcome-line"
+                    value={emailContext.welcome_line}
+                    onChange={(e) =>
+                      setEmailContext({ ...emailContext, welcome_line: e.target.value })
+                    }
+                    placeholder="e.g. Hey there, fellow developer! 👋"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Specify a custom welcome line for your emails
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="end-line">End Line</Label>
+                  <Input
+                    id="end-line"
+                    value={emailContext.end_line}
+                    onChange={(e) => setEmailContext({ ...emailContext, end_line: e.target.value })}
+                    placeholder="e.g. Keep coding awesome stuff! 🚀"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Specify a custom ending line for your emails
                   </p>
                 </div>
 
@@ -159,6 +247,38 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="space-y-2">
+                  <Label htmlFor="pre-content">Pre-Content Block</Label>
+                  <Textarea
+                    id="pre-content"
+                    value={emailContext.pre_content_block}
+                    onChange={(e) =>
+                      setEmailContext({ ...emailContext, pre_content_block: e.target.value })
+                    }
+                    placeholder="Text to include at the start of every email"
+                    className="min-h-[100px]"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Add text that should appear at the beginning of every email
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="post-content">Post-Content Block</Label>
+                  <Textarea
+                    id="post-content"
+                    value={emailContext.post_content_block}
+                    onChange={(e) =>
+                      setEmailContext({ ...emailContext, post_content_block: e.target.value })
+                    }
+                    placeholder="Text to include at the end of every email"
+                    className="min-h-[100px]"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Add text that should appear at the end of every email
+                  </p>
+                </div>
+
+                <div className="space-y-2">
                   <Label htmlFor="additional-instructions">Additional Instructions</Label>
                   <Textarea
                     id="additional-instructions"
@@ -174,6 +294,22 @@ export default function SettingsPage() {
                   />
                   <p className="text-sm text-muted-foreground">
                     Any specific instructions or preferences for email generation
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="default-subject">Default Email Subject (Optional)</Label>
+                  <Input
+                    id="default-subject"
+                    value={emailContext.default_subject}
+                    onChange={(e) =>
+                      setEmailContext({ ...emailContext, default_subject: e.target.value })
+                    }
+                    placeholder="Leave empty to use AI-generated subjects (recommended)"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Override AI-generated subjects with a fixed subject line. Leave empty to let AI
+                    generate contextual subjects based on the email content (recommended).
                   </p>
                 </div>
 
