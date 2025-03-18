@@ -1,13 +1,13 @@
-import { NextResponse } from 'next/server';
-import OpenAI from 'openai';
-import { supabase } from '@/lib/supabase';
+import { NextResponse } from "next/server";
+import OpenAI from "openai";
+import { supabase } from "@/lib/supabase";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
 // Define email length options
-type EmailLength = 'short' | 'medium' | 'long';
+type EmailLength = "short" | "medium" | "long";
 
 interface EmailContext {
   tone: string;
@@ -26,16 +26,18 @@ export async function POST(request: Request) {
     const { customerEmail, surveyData, context } = await request.json();
 
     // Construct the system message
-    const systemMessage = `You are an expert email writer with the following characteristics:
-${context.systemContext || ''}
+    const systemMessage =
+      `You are an expert email writer with the following characteristics:
+${context.systemContext || ""}
 Your task is to write a personalized email based on survey data.
 Tone: ${context.tone}
-${context.brandInfo ? `Brand Information: ${context.brandInfo}` : ''}
+${context.brandInfo ? `Brand Information: ${context.brandInfo}` : ""}
 Length: ${context.emailLength} (short: 2-3 sentences, medium: 4-6 sentences, long: 7-10 sentences)
-Important: Do not include any greeting or salutation at the start of the email body as it will be added separately.`;
+Important: Do not include any greeting or salutation at the start of the email body as it will be added separately. Stick to the length given.`;
 
     // Construct the user message
-    const userMessage = `Write a personalized email for ${customerEmail} based on their survey responses:
+    const userMessage =
+      `Write a personalized email for ${customerEmail} based on their survey responses:
 ${JSON.stringify(surveyData, null, 2)}
 
 Generate both a subject line and email body that references their specific survey responses.
@@ -44,35 +46,35 @@ Do not include any greeting - the greeting will be handled separately.`;
 
     // Call OpenAI API
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4',
+      model: "gpt-4",
       messages: [
-        { role: 'system', content: systemMessage },
-        { role: 'user', content: userMessage },
+        { role: "system", content: systemMessage },
+        { role: "user", content: userMessage },
       ],
-      temperature: 0.7,
+      temperature: 0.6,
     });
 
     const response = completion.choices[0]?.message?.content;
     if (!response) {
-      throw new Error('No response from OpenAI');
+      throw new Error("No response from OpenAI");
     }
 
     // Parse the response to extract subject and email body
-    let subject = '';
-    let email = '';
+    let subject = "";
+    let email = "";
 
     // The AI should return the response in a format like:
     // Subject: The subject line
     // Body: The email content
-    const parts = response.split('\n');
+    const parts = response.split("\n");
     for (let i = 0; i < parts.length; i++) {
       const line = parts[i];
-      if (line.toLowerCase().startsWith('subject:')) {
-        subject = line.substring('subject:'.length).trim();
-      } else if (line.toLowerCase().startsWith('body:')) {
+      if (line.toLowerCase().startsWith("subject:")) {
+        subject = line.substring("subject:".length).trim();
+      } else if (line.toLowerCase().startsWith("body:")) {
         email = parts
           .slice(i + 1)
-          .join('\n')
+          .join("\n")
           .trim();
         break;
       }
@@ -80,7 +82,7 @@ Do not include any greeting - the greeting will be handled separately.`;
 
     // If parsing fails, use some fallbacks
     if (!subject) {
-      subject = 'Welcome to our community!';
+      subject = "Welcome to our community!";
     }
     if (!email) {
       email = response; // Use the entire response as email body
@@ -98,10 +100,10 @@ Do not include any greeting - the greeting will be handled separately.`;
 
     return NextResponse.json({ email, subject });
   } catch (error: any) {
-    console.error('Email generation error:', error);
+    console.error("Email generation error:", error);
     return NextResponse.json(
-      { error: error.message || 'Failed to generate email' },
-      { status: 500 }
+      { error: error.message || "Failed to generate email" },
+      { status: 500 },
     );
   }
 }

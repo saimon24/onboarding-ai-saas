@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, Loader2, User, Mail, Wand2 } from 'lucide-react';
+import { ChevronLeft, Loader2, User, Mail, Wand2, Trash2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { DashboardLayout } from '@/components/dashboard-layout';
@@ -110,15 +110,10 @@ export default function SurveyPage({ params }: { params: { id: string } }) {
   };
 
   const handleGenerateEmail = async () => {
+    if (!customer) return;
+    setGeneratingEmail(true);
     try {
-      setGeneratingEmail(true);
-
-      // First, ensure we have the customer data and email context
-      if (!customer || !customer.survey_data) {
-        throw new Error('Customer data is required');
-      }
-
-      // Prepare the email generation request
+      // Prepare the email generation request with context
       const emailPrompt = {
         customerEmail: customer.email,
         surveyData: customer.survey_data,
@@ -132,7 +127,6 @@ export default function SurveyPage({ params }: { params: { id: string } }) {
         },
       };
 
-      // Call your API endpoint to generate the email
       const response = await fetch('/api/generate-email', {
         method: 'POST',
         headers: {
@@ -141,36 +135,30 @@ export default function SurveyPage({ params }: { params: { id: string } }) {
         body: JSON.stringify(emailPrompt),
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to generate email');
-      }
+      if (!response.ok) throw new Error('Failed to generate email');
 
       const { email, subject } = await response.json();
 
-      // Update the customer data with the generated email and subject
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('customer_data')
         .update({
           ai_email: email,
           ai_subject: subject,
         })
-        .eq('id', params.id)
-        .select()
-        .single();
+        .eq('id', customer.id);
 
       if (error) throw error;
-      if (data) {
-        setCustomer(data);
-        toast({
-          title: 'Success',
-          description: 'Email content generated successfully',
-        });
-      }
+
+      setCustomer({ ...customer, ai_email: email, ai_subject: subject });
+
+      toast({
+        title: 'Success',
+        description: 'Email content generated successfully',
+      });
     } catch (error: any) {
-      console.error('Email generation error:', error);
       toast({
         title: 'Error',
-        description: error.message || 'Failed to generate email',
+        description: error.message,
         variant: 'destructive',
       });
     } finally {
@@ -181,13 +169,22 @@ export default function SurveyPage({ params }: { params: { id: string } }) {
   const handleOpenEmailClient = () => {
     if (!customer) return;
 
-    // Use default subject if set, otherwise use AI-generated subject
-    const subject = emailContext.default_subject
-      ? encodeURIComponent(emailContext.default_subject)
-      : encodeURIComponent(customer.ai_subject || 'Welcome to our community!');
+    // Use AI-generated subject if available, otherwise use a default
+    const subject = customer.ai_subject || 'Follow-up on your survey response';
 
-    const body = encodeURIComponent(customer.ai_email || '');
-    window.location.href = `mailto:${customer.email}?subject=${subject}&body=${body}`;
+    // Convert HTML links to proper mailto format
+    // Example: <a href="https://example.com">Click here</a> becomes [Click here](https://example.com)
+    const bodyWithLinks =
+      customer.ai_email?.replace(
+        /<a\s+(?:[^>]*?\s+)?href="([^"]*)"[^>]*>(.*?)<\/a>/g,
+        (_, url, text) => `[${text}](${url})`
+      ) || '';
+
+    // Encode both subject and body for the mailto link
+    const mailtoUrl = `mailto:${customer.email}?subject=${encodeURIComponent(
+      subject
+    )}&body=${encodeURIComponent(bodyWithLinks)}`;
+    window.location.href = mailtoUrl;
   };
 
   const toggleEmailSent = async () => {
@@ -221,20 +218,85 @@ export default function SurveyPage({ params }: { params: { id: string } }) {
       heading="Survey Details"
       subheading="View detailed information about the survey response">
       <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <Button variant="ghost" className="gap-2" onClick={() => router.back()}>
-            <ChevronLeft className="h-4 w-4" />
-            Back to Responses
-          </Button>
-          {customer && (
-            <Button
-              variant={customer.email_sent ? 'default' : 'outline'}
-              onClick={toggleEmailSent}
-              className="gap-2">
-              <Mail className="h-4 w-4" />
-              {customer.email_sent ? 'Email Sent' : 'Mark as Sent'}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={() => router.back()}>
+              <ChevronLeft className="h-4 w-4 mr-2" />
+              Back to Responses
             </Button>
-          )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-4 gap-4">
+          <Button
+            className="w-full gap-2"
+            variant="outline"
+            onClick={handleOpenEmailClient}
+            disabled={!customer?.ai_email}>
+            <Mail className="h-4 w-4" />
+            Pre-fill Email
+          </Button>
+          <Button
+            className="w-full gap-2"
+            variant={customer?.email_sent ? 'default' : 'outline'}
+            onClick={toggleEmailSent}>
+            <Mail className="h-4 w-4" />
+            {customer?.email_sent ? 'Marked as Sent' : 'Mark as Sent'}
+          </Button>
+          <Button
+            className="w-full gap-2"
+            variant="outline"
+            onClick={handleGenerateEmail}
+            disabled={generatingEmail}>
+            {generatingEmail ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Wand2 className="h-4 w-4" />
+                Generate Email
+              </>
+            )}
+          </Button>
+          <Button
+            className="w-full gap-2"
+            variant="destructive"
+            onClick={() => {
+              if (
+                confirm(
+                  'Are you sure you want to delete this survey response? This action cannot be undone.'
+                )
+              ) {
+                const deleteEntry = async () => {
+                  try {
+                    const { error } = await supabase
+                      .from('customer_data')
+                      .delete()
+                      .eq('id', customer?.id);
+
+                    if (error) throw error;
+
+                    toast({
+                      title: 'Success',
+                      description: 'Survey response deleted successfully',
+                    });
+                    router.push('/data');
+                  } catch (error: any) {
+                    toast({
+                      title: 'Error',
+                      description: error.message,
+                      variant: 'destructive',
+                    });
+                  }
+                };
+                deleteEntry();
+              }
+            }}>
+            <Trash2 className="h-4 w-4" />
+            Delete Entry
+          </Button>
         </div>
 
         <Card>
@@ -251,19 +313,10 @@ export default function SurveyPage({ params }: { params: { id: string } }) {
               </div>
             ) : customer ? (
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-4">
                   <div>
                     <div className="font-medium">Email</div>
-                    <div className="text-muted-foreground flex items-center gap-2">
-                      {customer.email}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={handleOpenEmailClient}
-                        className="h-6 w-6">
-                        <Mail className="h-4 w-4" />
-                      </Button>
-                    </div>
+                    <div className="text-muted-foreground">{customer.email}</div>
                   </div>
                   <div>
                     <div className="font-medium">Received At</div>
@@ -282,40 +335,21 @@ export default function SurveyPage({ params }: { params: { id: string } }) {
                 </div>
 
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="font-medium">Email Content</div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleGenerateEmail}
-                      disabled={generatingEmail}
-                      className="gap-2">
-                      {generatingEmail ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Wand2 className="h-4 w-4" />
-                      )}
-                      Generate Email
-                    </Button>
-                  </div>
+                  <div className="font-medium">Email Content</div>
                   {customer.ai_email ? (
                     <div className="space-y-4">
                       <div className="bg-muted/50 p-4 rounded-lg">
                         <div className="font-medium mb-2">Subject</div>
                         <div className="text-muted-foreground">
-                          {emailContext.default_subject ||
-                            customer.ai_subject ||
-                            'No subject generated yet'}
-                          {emailContext.default_subject && (
-                            <span className="text-xs ml-2 text-muted-foreground">
-                              (Using default subject)
-                            </span>
-                          )}
+                          {customer.ai_subject || 'No subject generated yet'}
                         </div>
                       </div>
-                      <div className="bg-muted p-4 rounded-lg whitespace-pre-wrap">
-                        {customer.ai_email}
-                      </div>
+                      <div
+                        className="bg-muted p-4 rounded-lg prose dark:prose-invert max-w-none"
+                        dangerouslySetInnerHTML={{
+                          __html: customer.ai_email.replace(/\n/g, '<br>'),
+                        }}
+                      />
                     </div>
                   ) : (
                     <div className="text-center text-muted-foreground p-4 bg-muted rounded-lg">
