@@ -80,28 +80,29 @@ export default function DataPage() {
       } = await supabase.auth.getSession();
       if (!session) return;
 
-      let query = supabase.from('customer_data').select('*', { count: 'exact' });
+      let count;
 
       // Apply email sent filter
       if (emailFilter === 'sent') {
-        query = query.eq('email_sent', true);
+        count = await supabase
+          .from('customer_data')
+          .select('*', { count: 'exact' })
+          .eq('email_sent', true);
       } else if (emailFilter === 'not_sent') {
-        query = query.eq('email_sent', false);
+        count = await supabase
+          .from('customer_data')
+          .select('*', { count: 'exact' })
+          .eq('email_sent', false);
       }
 
-      // Get total count
-      const countQuery = query.select('*', { count: 'exact', head: true });
-      const { count, error: countError } = await countQuery;
-
-      if (countError) throw countError;
-
-      setTotalCount(count || 0);
+      setTotalCount(count?.count || 0);
 
       // Get paginated data
       const from = (currentPage - 1) * pageSize;
       const to = from + pageSize - 1;
 
-      const { data, error } = await query
+      const { data, error } = await supabase
+        .from('customer_data')
         .select()
         .order('created_at', { ascending: false })
         .range(from, to);
