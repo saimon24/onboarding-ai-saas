@@ -117,8 +117,7 @@ export function SubscriptionManagement({
             <div>
               <p className="text-sm font-medium text-muted-foreground">Renewal Date</p>
               <div className="flex items-center gap-2">
-                {/* TODO: Add calendar icon */}
-                {/* <Calendar className="h-4 w-4 text-muted-foreground" /> */}
+                <Calendar className="h-4 w-4 text-muted-foreground" />
                 <p>{formatDate(subscriptionPeriodEnd)}</p>
               </div>
             </div>
