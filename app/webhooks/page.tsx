@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/select';
 
 interface WebhookConfig {
+  provider: 'tally' | 'typeform' | 'other';
   field_mappings: Record<string, string>;
   test_event?: Record<string, any>;
 }
@@ -54,6 +55,7 @@ export default function WebhooksPage() {
   const [saving, setSaving] = useState(false);
   const [regeneratingSecret, setRegeneratingSecret] = useState(false);
   const [fieldMappings, setFieldMappings] = useState<Record<string, string>>({});
+  const [provider, setProvider] = useState<'tally' | 'typeform' | 'other'>('tally');
   const [newFieldName, setNewFieldName] = useState('');
   const [newFieldPath, setNewFieldPath] = useState('');
   const [testEventJson, setTestEventJson] = useState('');
@@ -98,6 +100,7 @@ export default function WebhooksPage() {
 
       setProfile(data);
       setFieldMappings(data.webhook_config?.field_mappings || {});
+      setProvider(data.webhook_config?.provider || 'tally');
       setTestEventJson(JSON.stringify(data.webhook_config?.test_event || {}, null, 2));
       setWebhookUrl(`${window.location.origin}/api/webhooks/survey/${data.webhook_id}`);
       setLoading(false);
@@ -194,6 +197,7 @@ export default function WebhooksPage() {
 
     const updatedConfig = {
       ...profile.webhook_config,
+      provider,
       field_mappings: newMappings,
       test_event: parsedExample || profile.webhook_config?.test_event,
     };
@@ -238,36 +242,83 @@ export default function WebhooksPage() {
       const parsed = JSON.parse(exampleJson);
       setParsedExample(parsed);
 
-      // Extract all possible fields
+      // Extract all possible fields based on the provider
       const fields: ParsedField[] = [];
 
-      // Helper function to get field options
-      const getFieldOptions = (field: any) => {
-        if (field.type === 'MULTIPLE_CHOICE' || field.type === 'CHECKBOXES') {
-          return field.options;
-        }
-        return undefined;
-      };
+      if (provider === 'typeform') {
+        // Parse Typeform fields
+        const answers = parsed.form_response?.answers || [];
+        const definition = parsed.form_response?.definition || {};
+        const definitionFields = definition.fields || [];
 
-      // Process fields array
-      if (parsed.data?.fields && Array.isArray(parsed.data.fields)) {
-        const seenLabels = new Set<string>();
-
-        parsed.data.fields.forEach((field: any, index: number) => {
-          // Skip fields that are individual checkbox options (they have the same base label)
-          if (field.label && !field.label.includes('(')) {
-            // Check if we've already processed this field (for checkboxes/multiple choice)
-            if (!seenLabels.has(field.label)) {
-              seenLabels.add(field.label);
-              fields.push({
-                path: `data.fields[${index}]`,
-                label: field.label,
-                type: field.type,
-                options: getFieldOptions(field),
-              });
-            }
+        answers.forEach((answer: any, index: number) => {
+          const field = definitionFields.find((f: any) => f.id === answer.field.id);
+          if (field) {
+            fields.push({
+              path: `form_response.answers[${index}]`,
+              label: field.title,
+              type: answer.type,
+              options: field.choices?.map((choice: any) => ({
+                id: choice.id,
+                text: choice.label,
+              })),
+            });
           }
         });
+      } else if (provider === 'tally') {
+        // Original Tally format parsing
+        if (parsed.data?.fields && Array.isArray(parsed.data.fields)) {
+          const seenLabels = new Set<string>();
+
+          parsed.data.fields.forEach((field: any, index: number) => {
+            if (field.label && !field.label.includes('(')) {
+              if (!seenLabels.has(field.label)) {
+                seenLabels.add(field.label);
+                fields.push({
+                  path: `data.fields[${index}]`,
+                  label: field.label,
+                  type: field.type,
+                  options: field.options,
+                });
+              }
+            }
+          });
+        }
+      } else {
+        // For 'other' provider, try to intelligently parse the structure
+        const findPotentialFields = (obj: any, path = ''): void => {
+          if (!obj || typeof obj !== 'object') return;
+
+          // Look for common field patterns
+          if (
+            obj.label ||
+            obj.title ||
+            obj.name ||
+            (obj.type && (obj.value !== undefined || obj.answer !== undefined))
+          ) {
+            fields.push({
+              path: path,
+              label: obj.label || obj.title || obj.name || path,
+              type: obj.type,
+              options: obj.options || obj.choices,
+            });
+            return;
+          }
+
+          // Recursively search through objects and arrays
+          Object.entries(obj).forEach(([key, value]) => {
+            const newPath = path ? `${path}.${key}` : key;
+            if (Array.isArray(value)) {
+              value.forEach((item, index) => {
+                findPotentialFields(item, `${newPath}[${index}]`);
+              });
+            } else if (typeof value === 'object') {
+              findPotentialFields(value, newPath);
+            }
+          });
+        };
+
+        findPotentialFields(parsed);
       }
 
       setParsedFields(fields);
@@ -290,51 +341,76 @@ export default function WebhooksPage() {
       survey_data: {},
     };
 
+    // Helper function to get value from path for Typeform
+    const getTypeformValue = (answer: any) => {
+      switch (answer.type) {
+        case 'choice':
+          return answer.choice.label;
+        case 'choices':
+          return answer.choices.labels;
+        case 'email':
+          return answer.email;
+        case 'text':
+        case 'long_text':
+          return answer.text;
+        default:
+          return answer[answer.type];
+      }
+    };
+
     // Helper function to get value from path
     const getValueFromPath = (path: string) => {
-      const parts = path.split('.');
-      let value = parsedExample;
-      for (const part of parts) {
-        if (part.includes('[') && part.includes(']')) {
-          const arrayName = part.split('[')[0];
-          const index = parseInt(part.split('[')[1].split(']')[0]);
-          value = value[arrayName][index];
-        } else {
-          value = value[part];
+      if (provider === 'typeform') {
+        const parts = path.split('.');
+        const answerIndex = parseInt(parts[parts.length - 1].match(/\[(\d+)\]/)?.[1] || '0');
+        const answers = parsedExample.form_response?.answers || [];
+        const answer = answers[answerIndex];
+        return answer ? getTypeformValue(answer) : undefined;
+      } else if (provider === 'tally') {
+        const parts = path.split('.');
+        let value = parsedExample;
+        for (const part of parts) {
+          if (part.includes('[') && part.includes(']')) {
+            const arrayName = part.split('[')[0];
+            const index = parseInt(part.split('[')[1].split(']')[0]);
+            value = value[arrayName][index];
+          } else {
+            value = value[part];
+          }
         }
+        return value?.value;
+      } else {
+        // For 'other' provider, try to get the value intelligently
+        const parts = path.split('.');
+        let value = parsedExample;
+        for (const part of parts) {
+          if (part.includes('[') && part.includes(']')) {
+            const arrayName = part.split('[')[0];
+            const index = parseInt(part.split('[')[1].split(']')[0]);
+            value = value[arrayName][index];
+          } else {
+            value = value[part];
+          }
+        }
+        return value?.value || value?.answer || value;
       }
-      return value;
     };
 
     // Get email
     if (selectedEmailField) {
-      preview.email = getValueFromPath(`${selectedEmailField}.value`);
+      preview.email = getValueFromPath(selectedEmailField);
     }
 
     // Get survey data
     Object.entries(selectedSurveyFields).forEach(([label, path]) => {
-      if (!path) return; // Skip empty mappings
+      if (!path) return;
 
       const field = parsedFields.find((f) => f.path === path);
       if (field) {
-        const rawValue = getValueFromPath(`${path}.value`);
-
-        // Handle multiple choice and checkbox fields
-        if (field.type === 'MULTIPLE_CHOICE' && field.options && Array.isArray(rawValue)) {
-          const selectedOption = field.options.find((opt) => rawValue.includes(opt.id));
-          preview.survey_data[label] = selectedOption?.text || '';
-        } else if (field.type === 'CHECKBOXES' && field.options && Array.isArray(rawValue)) {
-          const selectedOptions = field.options
-            .filter((opt) => rawValue.includes(opt.id))
-            .map((opt) => opt.text);
-          preview.survey_data[label] = selectedOptions.length ? selectedOptions : [];
-        } else {
-          preview.survey_data[label] = rawValue || '';
-        }
+        preview.survey_data[field.label] = getValueFromPath(path);
       }
     });
 
-    console.log('Preview data:', preview); // Add logging to debug
     setPreviewData(preview);
   };
 
@@ -355,45 +431,80 @@ export default function WebhooksPage() {
               </TabsList>
 
               <TabsContent value="setup">
-                <div className="grid gap-4">
-                  <div>
-                    <Label>Your Webhook URL</Label>
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <Input value={webhookUrl} readOnly />
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() =>
-                          handleCopyToClipboard(webhookUrl, 'Webhook URL copied to clipboard')
-                        }>
-                        <Copy className="h-4 w-4" />
-                      </Button>
+                <div className="grid gap-6">
+                  <div className="space-y-4">
+                    <div>
+                      <Label>Provider</Label>
+                      <div className="mt-1.5">
+                        <Select
+                          value={provider}
+                          onValueChange={(value: 'tally' | 'typeform' | 'other') => {
+                            setProvider(value);
+                            // Clear any existing mappings when changing provider
+                            setFieldMappings({});
+                            setSelectedEmailField('');
+                            setSelectedSurveyFields({});
+                            setParsedFields([]);
+                            setPreviewData(null);
+                          }}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a provider" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="tally">Tally</SelectItem>
+                            <SelectItem value="typeform">Typeform</SelectItem>
+                            <SelectItem value="other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-1.5">
+                        {provider === 'typeform'
+                          ? 'Configure your Typeform webhook to send responses to this URL.'
+                          : provider === 'tally'
+                          ? 'Configure your Tally webhook to send responses to this URL.'
+                          : "Configure your webhook to send survey responses to this URL. We'll help you map the fields."}
+                      </p>
+                    </div>
+
+                    <div>
+                      <Label>Your Webhook URL</Label>
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <Input value={webhookUrl} readOnly />
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() =>
+                            handleCopyToClipboard(webhookUrl, 'Webhook URL copied to clipboard')
+                          }>
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-1">
-                      <Label>Webhook Security</Label>
-                      <div className="text-sm text-muted-foreground">
-                        Regenerate your webhook URL if you suspect it has been compromised.
-                      </div>
+                  <div className="space-y-1.5">
+                    <Label>Webhook Security</Label>
+                    <div className="text-sm text-muted-foreground">
+                      Regenerate your webhook URL if you suspect it has been compromised.
                     </div>
-                    <Button
-                      variant="outline"
-                      onClick={handleRegenerateSecret}
-                      disabled={regeneratingSecret}>
-                      {regeneratingSecret ? (
-                        <>
-                          <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                          Regenerating...
-                        </>
-                      ) : (
-                        <>
-                          <RefreshCw className="mr-2 h-4 w-4" />
-                          Regenerate URL
-                        </>
-                      )}
-                    </Button>
+                    <div className="mt-3">
+                      <Button
+                        variant="outline"
+                        onClick={handleRegenerateSecret}
+                        disabled={regeneratingSecret}>
+                        {regeneratingSecret ? (
+                          <>
+                            <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                            Regenerating...
+                          </>
+                        ) : (
+                          <>
+                            <RefreshCw className="mr-2 h-4 w-4" />
+                            Regenerate URL
+                          </>
+                        )}
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </TabsContent>

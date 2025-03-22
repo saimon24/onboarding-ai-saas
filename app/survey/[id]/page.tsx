@@ -256,7 +256,7 @@ export default function SurveyPage({ params }: { params: { id: string } }) {
             ) : (
               <>
                 <Wand2 className="h-4 w-4" />
-                Generate Email
+                {customer?.ai_email ? 'Regenerate Email' : 'Generate Email'}
               </>
             )}
           </Button>
