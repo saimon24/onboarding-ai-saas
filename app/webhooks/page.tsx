@@ -101,7 +101,26 @@ export default function WebhooksPage() {
       setProfile(data);
       setFieldMappings(data.webhook_config?.field_mappings || {});
       setProvider(data.webhook_config?.provider || 'tally');
-      setTestEventJson(JSON.stringify(data.webhook_config?.test_event || {}, null, 2));
+      try {
+        // Parse and re-stringify to ensure proper formatting
+        let testEvent = {};
+        if (data.webhook_last_received) {
+          try {
+            // It might already be a JSON string or an object
+            testEvent =
+              typeof data.webhook_last_received === 'string'
+                ? JSON.parse(data.webhook_last_received)
+                : data.webhook_last_received;
+          } catch (e) {
+            // If it's not valid JSON, use as is
+            testEvent = { data: data.webhook_last_received };
+          }
+        }
+        setTestEventJson(JSON.stringify(testEvent, null, 2));
+      } catch (e) {
+        console.error('Error parsing webhook_last_received:', e);
+        setTestEventJson('{}');
+      }
       setWebhookUrl(`${window.location.origin}/api/webhooks/survey/${data.webhook_id}`);
       setLoading(false);
     };
@@ -196,19 +215,18 @@ export default function WebhooksPage() {
     });
 
     const updatedConfig = {
-      ...profile.webhook_config,
       provider,
       field_mappings: newMappings,
-      test_event: parsedExample || profile.webhook_config?.test_event,
     };
 
-    const { error } = await supabase
+    // Only update the webhook_config with the mappings and provider
+    const { error: configError } = await supabase
       .from('profiles')
       .update({ webhook_config: updatedConfig })
       .eq('id', profile.id);
 
-    if (error) {
-      console.error('Error saving field mappings:', error);
+    if (configError) {
+      console.error('Error saving field mappings:', configError);
       toast({
         title: 'Error',
         description: 'Failed to save field mappings',
@@ -218,7 +236,30 @@ export default function WebhooksPage() {
       return;
     }
 
-    setProfile({ ...profile, webhook_config: updatedConfig });
+    // If we have a parsed example and it's different from what's already saved, update it
+    if (
+      parsedExample &&
+      JSON.stringify(parsedExample) !== JSON.stringify(profile.webhook_config?.test_event)
+    ) {
+      // Update the test event if needed, but keep it separate from the main config
+      const { error: testEventError } = await supabase
+        .from('profiles')
+        .update({ webhook_last_received: JSON.stringify(parsedExample) })
+        .eq('id', profile.id);
+
+      if (testEventError) {
+        console.error('Error saving test event:', testEventError);
+        // Non-critical error, so just log it and continue
+      }
+    }
+
+    setProfile({
+      ...profile,
+      webhook_config: updatedConfig,
+      webhook_last_received: parsedExample
+        ? JSON.stringify(parsedExample)
+        : profile.webhook_last_received,
+    });
     setFieldMappings(newMappings);
     toast({
       title: 'Success',
@@ -358,41 +399,65 @@ export default function WebhooksPage() {
       }
     };
 
+    // Helper to access nested properties using dot notation string
+    const getNestedValue = (obj: any, pathString: string): any => {
+      const parts = pathString.split('.');
+      let value = obj;
+      for (const part of parts) {
+        if (!value) return undefined;
+        if (part.includes('[') && part.includes(']')) {
+          const arrayName = part.substring(0, part.indexOf('['));
+          const index = parseInt(part.substring(part.indexOf('[') + 1, part.indexOf(']')));
+          if (!value[arrayName] || index >= value[arrayName].length) return undefined;
+          value = value[arrayName][index];
+        } else {
+          value = value[part];
+        }
+      }
+      return value;
+    };
+
     // Helper function to get value from path
     const getValueFromPath = (path: string) => {
+      const fieldData = getNestedValue(parsedExample, path);
+      if (!fieldData) return undefined;
+
       if (provider === 'typeform') {
-        const parts = path.split('.');
-        const answerIndex = parseInt(parts[parts.length - 1].match(/\[(\d+)\]/)?.[1] || '0');
         const answers = parsedExample.form_response?.answers || [];
-        const answer = answers[answerIndex];
+        const answer = answers.find((a: any) => a.field?.id === fieldData.field?.id);
         return answer ? getTypeformValue(answer) : undefined;
       } else if (provider === 'tally') {
-        const parts = path.split('.');
-        let value = parsedExample;
-        for (const part of parts) {
-          if (part.includes('[') && part.includes(']')) {
-            const arrayName = part.split('[')[0];
-            const index = parseInt(part.split('[')[1].split(']')[0]);
-            value = value[arrayName][index];
-          } else {
-            value = value[part];
-          }
+        // For Tally forms, handle the different field types properly
+        switch (fieldData.type) {
+          case 'MULTIPLE_CHOICE':
+          case 'CHECKBOXES':
+            // If the value is an array of IDs, map them to their text labels
+            if (Array.isArray(fieldData.value) && fieldData.options) {
+              return fieldData.value
+                .map((optionId: string) => {
+                  const option = fieldData.options.find((opt: any) => opt.id === optionId);
+                  return option ? option.text : optionId;
+                })
+                .join(', ');
+            }
+            // If the value is boolean true/false (individual checkbox), return appropriate value
+            else if (typeof fieldData.value === 'boolean') {
+              return fieldData.value ? 'Yes' : 'No';
+            }
+            // Fallback
+            return fieldData.value;
+
+          case 'TEXTAREA':
+          case 'TEXT_INPUT':
+          case 'EMAIL':
+          case 'HIDDEN_FIELDS':
+          default:
+            // For simple field types, just return the value directly
+            return fieldData.value;
         }
-        return value?.value;
       } else {
         // For 'other' provider, try to get the value intelligently
-        const parts = path.split('.');
-        let value = parsedExample;
-        for (const part of parts) {
-          if (part.includes('[') && part.includes(']')) {
-            const arrayName = part.split('[')[0];
-            const index = parseInt(part.split('[')[1].split(']')[0]);
-            value = value[arrayName][index];
-          } else {
-            value = value[part];
-          }
-        }
-        return value?.value || value?.answer || value;
+        return fieldData?.value || fieldData?.answer || fieldData;
       }
     };
 

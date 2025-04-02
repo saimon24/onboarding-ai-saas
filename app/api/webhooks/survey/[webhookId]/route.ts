@@ -27,6 +27,9 @@ const getTypeformValue = (answer: any) => {
 
 // Helper function to get value from path
 const getValueFromPath = (obj: any, path: string, provider: string) => {
+  console.log(`Getting value from path: ${path} for provider: ${provider}`);
+  console.log("Path parts:", path.split("."));
+
   if (provider === "typeform") {
     const parts = path.split(".");
     const answerIndex = parseInt(
@@ -35,6 +38,61 @@ const getValueFromPath = (obj: any, path: string, provider: string) => {
     const answers = obj.form_response?.answers || [];
     const answer = answers[answerIndex];
     return answer ? getTypeformValue(answer) : undefined;
+  } else if (provider === "tally") {
+    // For Tally, handle array references like "data.fields[0]"
+    if (path.match(/data\.fields\[\d+\]/)) {
+      const index = parseInt(path.match(/\[(\d+)\]/)?.[1] || "0");
+      console.log(`Tally field index: ${index}`);
+
+      // Get the fields array
+      const fields = obj.data?.fields;
+      console.log(`Fields array length: ${fields?.length || 0}`);
+
+      if (Array.isArray(fields) && fields[index]) {
+        const field = fields[index];
+        console.log(`Field at index ${index}:`, field);
+
+        // Handle different field types
+        switch (field.type) {
+          case "MULTIPLE_CHOICE":
+          case "CHECKBOXES":
+            console.log(`Processing ${field.type} field`);
+            // For multiple choice and checkboxes, convert IDs to text values
+            if (Array.isArray(field.value) && field.options) {
+              const result = field.value.map((optionId: string) => {
+                const option = field.options.find((opt: any) =>
+                  opt.id === optionId
+                );
+                const text = option ? option.text : optionId;
+                console.log(`Mapped option ${optionId} to text: ${text}`);
+                return text;
+              }).join(", ");
+              console.log(`Final mapped result: ${result}`);
+              return result;
+            } // Handle boolean checkbox values
+            else if (typeof field.value === "boolean") {
+              console.log(`Boolean value: ${field.value}`);
+              return field.value ? "Yes" : "No";
+            }
+            // Fallback
+            console.log(`Using fallback value: ${field.value}`);
+            return field.value;
+
+          case "TEXTAREA":
+          case "TEXT_INPUT":
+          case "EMAIL":
+          case "HIDDEN_FIELDS":
+          default:
+            console.log(`Simple field value: ${field.value}`);
+            // For simple field types, just return the value
+            return field.value;
+        }
+      } else {
+        console.log("Field not found at the specified index");
+      }
+    } else {
+      console.log("Path does not match expected Tally field pattern");
+    }
   }
 
   // Handle array paths like "data.fields[type=HIDDEN_FIELDS&label=email].value"
@@ -61,7 +119,14 @@ const getValueFromPath = (obj: any, path: string, provider: string) => {
   }
 
   // Regular nested path
-  return path.split(".").reduce((obj, key) => obj?.[key], obj);
+  try {
+    const result = path.split(".").reduce((obj, key) => obj?.[key], obj);
+    console.log(`Regular path result: ${result}`);
+    return result;
+  } catch (e) {
+    console.error(`Error getting value from path ${path}:`, e);
+    return undefined;
+  }
 };
 
 // Helper function to get field label from path
@@ -132,9 +197,9 @@ export async function POST(
         .update({
           webhook_config: {
             ...profiles.webhook_config,
-            test_event: body,
+            provider,
           },
-          webhook_last_received: new Date().toISOString(),
+          webhook_last_received: JSON.stringify(body),
         })
         .eq("id", profiles.id);
 
@@ -149,34 +214,41 @@ export async function POST(
     const surveyData: Record<string, any> = {};
     let email = "";
 
+    console.log("Processing webhook with provider:", provider);
+    console.log("Field mappings:", fieldMappings);
+
     // Map the fields according to the user's configuration
     for (const [targetField, sourcePath] of Object.entries(fieldMappings)) {
       if (sourcePath && typeof sourcePath === "string") {
+        console.log(
+          `Processing field mapping: ${targetField} -> ${sourcePath}`,
+        );
+
         if (targetField === "email") {
           // For email field, use the standard path-based value
           email = getValueFromPath(body, sourcePath, provider);
+          console.log(`Extracted email: ${email}`);
         } else {
-          // For other fields, get both label and value
-          const fieldLabel = getFieldLabel(body, sourcePath, provider);
+          // For other fields, get the field value using the proper path
           const fieldValue = getValueFromPath(body, sourcePath, provider);
+          console.log(`Extracted value for ${targetField}: ${fieldValue}`);
 
-          if (fieldLabel && fieldValue !== undefined) {
-            // Use the actual field label as the key and the field value as the value
-            surveyData[fieldLabel] = fieldValue;
-          } else {
-            // Fallback to the target field if no label is found
-            surveyData[targetField] = fieldValue;
-          }
+          // Always use the target field (from the mapping) as the key
+          // This ensures we use the labels from the form configuration
+          surveyData[targetField] = fieldValue;
         }
       }
     }
 
     // Ensure we have an email
     if (!email) {
+      console.log("Email field mapping is missing or invalid");
       return NextResponse.json({ error: "Email field mapping is required" }, {
         status: 400,
       });
     }
+
+    console.log("Final survey data:", surveyData);
 
     // Insert the customer data
     const { error: insertError } = await supabase.from("customer_data").insert({
@@ -249,13 +321,18 @@ export async function POST(
       // The user can always generate it manually later
     }
 
-    // Update the last received timestamp
-    await supabase
-      .from("profiles")
-      .update({
-        webhook_last_received: new Date().toISOString(),
-      })
-      .eq("id", profiles.id);
+    // Update the last received timestamp and data
+    try {
+      await supabase
+        .from("profiles")
+        .update({
+          webhook_last_received: JSON.stringify(body),
+        })
+        .eq("id", profiles.id);
+      console.log("Successfully updated webhook_last_received");
+    } catch (error) {
+      console.error("Error updating webhook_last_received:", error);
+    }
 
     return NextResponse.json({
       success: true,
