@@ -80,32 +80,37 @@ export default function DataPage() {
       } = await supabase.auth.getSession();
       if (!session) return;
 
-      let count;
+      let query = supabase.from('customer_data').select('*', { count: 'exact' });
 
       // Apply email sent filter
       if (emailFilter === 'sent') {
-        count = await supabase
-          .from('customer_data')
-          .select('*', { count: 'exact' })
-          .eq('email_sent', true);
+        query = query.eq('email_sent', true);
       } else if (emailFilter === 'not_sent') {
-        count = await supabase
-          .from('customer_data')
-          .select('*', { count: 'exact' })
-          .eq('email_sent', false);
+        query = query.eq('email_sent', false);
       }
 
+      const count = await query;
       setTotalCount(count?.count || 0);
 
       // Get paginated data
       const from = (currentPage - 1) * pageSize;
       const to = from + pageSize - 1;
 
-      const { data, error } = await supabase
+      // Apply the same filter to the paginated query
+      let paginatedQuery = supabase
         .from('customer_data')
         .select()
         .order('created_at', { ascending: false })
         .range(from, to);
+
+      // Apply the same email filter to the paginated query
+      if (emailFilter === 'sent') {
+        paginatedQuery = paginatedQuery.eq('email_sent', true);
+      } else if (emailFilter === 'not_sent') {
+        paginatedQuery = paginatedQuery.eq('email_sent', false);
+      }
+
+      const { data, error } = await paginatedQuery;
 
       if (error) throw error;
 

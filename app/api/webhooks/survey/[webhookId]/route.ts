@@ -289,25 +289,48 @@ export async function POST(
         },
       };
 
+      console.log(
+        "Preparing to generate email with prompt:",
+        JSON.stringify(emailPrompt),
+      );
+
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      console.log(`Calling generate-email API at ${appUrl}/api/generate-email`);
+
       const response = await fetch(
-        `${
-          process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
-        }/api/generate-email`,
+        `${appUrl}/api/generate-email`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify(emailPrompt),
+          cache: "no-store",
         },
       );
 
-      if (!response.ok) throw new Error("Failed to generate email");
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(
+          `Failed to generate email: ${response.status} ${response.statusText}`,
+          errorText,
+        );
+        throw new Error(
+          `Failed to generate email: ${response.status} ${errorText}`,
+        );
+      }
 
-      const { email: generatedEmail, subject } = await response.json();
+      const data = await response.json();
+      console.log("Email generation successful:", data);
+
+      const { email: generatedEmail, subject } = data;
+
+      if (!generatedEmail || !subject) {
+        throw new Error("Incomplete email response received");
+      }
 
       // Update the customer data with the generated email
-      await supabase
+      const { error: updateError } = await supabase
         .from("customer_data")
         .update({
           ai_email: generatedEmail,
@@ -315,6 +338,18 @@ export async function POST(
         })
         .eq("profile_id", profiles.id)
         .eq("email", email);
+
+      if (updateError) {
+        console.error(
+          "Error updating customer data with generated email:",
+          updateError,
+        );
+        throw new Error(
+          `Failed to save generated email: ${updateError.message}`,
+        );
+      }
+
+      console.log("Successfully updated customer data with generated email");
     } catch (error: any) {
       console.error("Error generating email:", error);
       // We don't want to fail the webhook if email generation fails

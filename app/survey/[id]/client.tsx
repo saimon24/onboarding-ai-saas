@@ -34,7 +34,9 @@ export default function CustomerClient({ customerData }: { customerData: Custome
         title: 'Success',
         description: 'Survey entry deleted successfully',
       });
-      router.push('/dashboard/data');
+
+      // Force navigation
+      window.location.href = '/dashboard/data';
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -60,6 +62,9 @@ export default function CustomerClient({ customerData }: { customerData: Custome
         title: 'Success',
         description: `Email marked as ${!customer.email_sent ? 'sent' : 'not sent'}`,
       });
+
+      // Force navigation
+      window.location.href = '/dashboard/data';
     } catch (error: any) {
       toast({
         title: 'Error',
