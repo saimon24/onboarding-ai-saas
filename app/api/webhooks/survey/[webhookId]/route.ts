@@ -258,13 +258,12 @@ export async function POST(
     });
 
     if (insertError) {
-      return NextResponse.json(
-        {
-          error: "Failed to insert customer data",
-          details: insertError.message,
-        },
-        { status: 500 },
-      );
+      console.error("Error inserting customer data:", insertError);
+      // Still return success to prevent webhook retries
+      return NextResponse.json({
+        success: true,
+        message: "Survey data received. Note: Failed to save data.",
+      });
     }
 
     // Get the email context from the profile
@@ -274,87 +273,85 @@ export async function POST(
       .eq("id", profiles.id)
       .single();
 
-    // Generate email content
-    try {
-      const emailPrompt = {
-        customerEmail: email,
-        surveyData,
-        context: profileData?.email_context || {
-          tone: "professional and friendly",
-          brandInfo: "",
-          welcomeLine: "",
-          endLine: "",
-          systemContext: "",
-          emailLength: "medium",
-        },
-      };
-
-      console.log(
-        "Preparing to generate email with prompt:",
-        JSON.stringify(emailPrompt),
-      );
-
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-      console.log(`Calling generate-email API at ${appUrl}/api/generate-email`);
-
-      const response = await fetch(
-        `${appUrl}/api/generate-email`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
+    // Start email generation in the background
+    const generateEmail = async () => {
+      try {
+        const emailPrompt = {
+          customerEmail: email,
+          surveyData,
+          context: profileData?.email_context || {
+            tone: "professional and friendly",
+            brandInfo: "",
+            welcomeLine: "",
+            endLine: "",
+            systemContext: "",
+            emailLength: "medium",
           },
-          body: JSON.stringify(emailPrompt),
-          cache: "no-store",
-        },
-      );
+        };
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(
-          `Failed to generate email: ${response.status} ${response.statusText}`,
-          errorText,
+        console.log("Starting background email generation for:", email);
+
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL ||
+          "http://localhost:3000";
+        const response = await fetch(
+          `${appUrl}/api/generate-email`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(emailPrompt),
+            cache: "no-store",
+          },
         );
-        throw new Error(
-          `Failed to generate email: ${response.status} ${errorText}`,
-        );
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(
+            `Failed to generate email: ${response.status} ${response.statusText}`,
+            errorText,
+          );
+          return;
+        }
+
+        const data = await response.json();
+        console.log("Email generation successful:", data);
+
+        const { email: generatedEmail, subject } = data;
+
+        if (!generatedEmail || !subject) {
+          console.error("Incomplete email response received");
+          return;
+        }
+
+        // Update the customer data with the generated email
+        const { error: updateError } = await supabase
+          .from("customer_data")
+          .update({
+            ai_email: generatedEmail,
+            ai_subject: subject,
+          })
+          .eq("profile_id", profiles.id)
+          .eq("email", email);
+
+        if (updateError) {
+          console.error(
+            "Error updating customer data with generated email:",
+            updateError,
+          );
+          return;
+        }
+
+        console.log("Successfully updated customer data with generated email");
+      } catch (error: any) {
+        console.error("Error in background email generation:", error);
       }
+    };
 
-      const data = await response.json();
-      console.log("Email generation successful:", data);
-
-      const { email: generatedEmail, subject } = data;
-
-      if (!generatedEmail || !subject) {
-        throw new Error("Incomplete email response received");
-      }
-
-      // Update the customer data with the generated email
-      const { error: updateError } = await supabase
-        .from("customer_data")
-        .update({
-          ai_email: generatedEmail,
-          ai_subject: subject,
-        })
-        .eq("profile_id", profiles.id)
-        .eq("email", email);
-
-      if (updateError) {
-        console.error(
-          "Error updating customer data with generated email:",
-          updateError,
-        );
-        throw new Error(
-          `Failed to save generated email: ${updateError.message}`,
-        );
-      }
-
-      console.log("Successfully updated customer data with generated email");
-    } catch (error: any) {
-      console.error("Error generating email:", error);
-      // We don't want to fail the webhook if email generation fails
-      // The user can always generate it manually later
-    }
+    // Start email generation without awaiting it
+    generateEmail().catch((error) => {
+      console.error("Unhandled error in background email generation:", error);
+    });
 
     // Update the last received timestamp and data
     try {
@@ -369,15 +366,17 @@ export async function POST(
       console.error("Error updating webhook_last_received:", error);
     }
 
+    // Always return success to prevent webhook retries
     return NextResponse.json({
       success: true,
       message: "Survey data received and processed successfully",
     });
   } catch (error: any) {
     console.error("Error processing webhook:", error);
-    return NextResponse.json(
-      { error: "Error processing webhook", details: error.message },
-      { status: 500 },
-    );
+    // Even in case of error, return success to prevent webhook retries
+    return NextResponse.json({
+      success: true,
+      message: "Survey data received. Note: Some processing may have failed.",
+    });
   }
 }
