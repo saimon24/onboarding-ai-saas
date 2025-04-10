@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
-import { supabase } from "@/lib/supabase";
+import Anthropic from "@anthropic-ai/sdk";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
 // Define email length options
@@ -44,19 +43,25 @@ Generate both a subject line and email body that references their specific surve
 Make it personal and engaging.
 Do not include any greeting - the greeting will be handled separately.`;
 
-    // Call OpenAI API
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4",
-      messages: [
-        { role: "system", content: systemMessage },
-        { role: "user", content: userMessage },
-      ],
+    // Call Claude API
+    const completion = await anthropic.messages.create({
+      model: "claude-3-opus-20240229",
+      max_tokens: 1000,
       temperature: 0.6,
+      system: systemMessage,
+      messages: [
+        {
+          role: "user",
+          content: userMessage,
+        },
+      ],
     });
 
-    const response = completion.choices[0]?.message?.content;
+    const response = completion.content[0]?.type === "text"
+      ? completion.content[0].text
+      : "";
     if (!response) {
-      throw new Error("No response from OpenAI");
+      throw new Error("No response from Claude");
     }
 
     // Parse the response to extract subject and email body
@@ -71,6 +76,9 @@ Do not include any greeting - the greeting will be handled separately.`;
       const line = parts[i];
       if (line.toLowerCase().startsWith("subject:")) {
         subject = line.substring("subject:".length).trim();
+        // Remove the subject line from the parts array
+        parts.splice(i, 1);
+        i--; // Adjust index since we removed an element
       } else if (line.toLowerCase().startsWith("body:")) {
         email = parts
           .slice(i + 1)
