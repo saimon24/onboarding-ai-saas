@@ -273,8 +273,7 @@ export async function POST(
       .eq("id", profiles.id)
       .single();
 
-    // Start email generation in the background
-    const generateEmail = async () => {
+    const generateEmail = async (profileData: any) => {
       try {
         const emailPrompt = {
           customerEmail: email,
@@ -349,7 +348,7 @@ export async function POST(
     };
 
     // Start email generation without awaiting it
-    generateEmail().catch((error) => {
+    generateEmail(profileData).catch((error) => {
       console.error("Unhandled error in background email generation:", error);
     });
 

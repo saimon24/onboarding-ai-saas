@@ -340,14 +340,6 @@ export default function Dashboard() {
                       {new Date(customer.created_at).toLocaleDateString()}
                     </p>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => router.push(`/customer/${customer.id}`)}
-                    className="gap-1">
-                    View Details
-                    <ExternalLink className="h-4 w-4" />
-                  </Button>
                 </div>
               ))}
               {customers.length > 0 && (
